@@ -13,8 +13,9 @@
     "windows": [
       {
         "title": "SymLinkManager",
-        "width": 1100,
-        "height": 720
+        "width": 1380,
+        "height": 745,
+        "center": true
       }
     ],
     "security": {
@@ -33,3 +34,6 @@
     ]
   }
 }
+
+
+
