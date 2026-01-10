@@ -5,6 +5,10 @@
 - Objectif: scanner, exporter et recreer des symlinks Windows/Linux avec remap de racines.
 - UI en anglais, theme PlexTools (fond sombre global, cards sombres, texte clair, accents orange).
 
+## Agent instructions
+- See `AGENTS.md` for operational rules and editing guidance.
+- If `AGENTS.md` conflicts with this document, follow `AGENTS.md`.
+
 ## Decisions UX principales
 - Deux onglets: Scan & Export / Import & Recreate.
 - Layout aligne en haut (pas de centrage vertical).
