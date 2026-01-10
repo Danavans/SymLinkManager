@@ -295,13 +295,16 @@
         <span class="label">Scan root</span>
         <span class="value">{scanData.src_root || "Not scanned"}</span>
       </div>
-      <div>
-        <span class="label">Entries</span>
-        <span class="value">{scanData.entries.length}</span>
-      </div>
-      <div>
-        <span class="label">Import loaded</span>
-        <span class="value">{importData ? importData.entries.length : 0}</span>
+      <div class="stats-row">
+        <div>
+          <span class="label">Entries</span>
+          <span class="value">{scanData.entries.length}</span>
+        </div>
+        <span class="stat-sep" aria-hidden="true"></span>
+        <div>
+          <span class="label">Import loaded</span>
+          <span class="value">{importData ? importData.entries.length : 0}</span>
+        </div>
       </div>
     </div>
   </header>
@@ -595,6 +598,28 @@
     padding: 16px;
     border-radius: 16px;
     backdrop-filter: blur(12px);
+  }
+
+  .stats > div {
+    text-align: center;
+  }
+
+  .stats-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+  }
+
+  .stats-row > div {
+    text-align: center;
+  }
+
+  .stat-sep {
+    width: 1px;
+    height: 26px;
+    background: rgba(255, 255, 255, 0.12);
+    flex: 0 0 1px;
   }
 
   .stats .label {
@@ -1025,3 +1050,7 @@
     }
   }
 </style>
+
+
+
+
