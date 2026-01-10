@@ -10,3 +10,4 @@ Operational rules:
 - Follow existing patterns for root remap rules and Windows elevation flow.
 - Avoid introducing new build steps; keep the app portable.
 - Keep behavior parity across Windows/Linux unless a platform requires a specific flow.
+- After each code change, propose a Conventional Commits message.
