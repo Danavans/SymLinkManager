@@ -62,8 +62,11 @@
 - Dossiers safe a supprimer: `src-tauri/target`, `node_modules`, `.svelte-kit`, `build`.
 
 ## Derniere mise a jour
-- 2026-01-09
+- 2026-01-10
 
 ## Changelog
+- 2026-01-10: Fenetre Tauri 1380x745 centree; stats top-right avec Entries + Import loaded sur une ligne, separateur, centrage des labels/valeurs (y compris Scan root).
 - 2026-01-09: UI onglets + theme PlexTools, import/export, remap roots, elevation admin, preview roots + sample.
 - 2026-01-09: Recherche dynamique (multi-termes + exclusions), export filtre, status bubble.
+
+
