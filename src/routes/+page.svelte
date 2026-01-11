@@ -226,7 +226,7 @@
         data: importData,
         dstRoot,
         mappings: cleanMappings(),
-        maxPreview: 4
+        maxPreview: importData.entries.length
       });
       if (seq !== previewSeq) return;
       preview = {
