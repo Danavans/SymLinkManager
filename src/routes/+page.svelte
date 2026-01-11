@@ -28,6 +28,7 @@
   let activeTab = $state("scan");
   /** @type {string[]} */
   let lastFailures = $state([]);
+  /** @type {"relative" | "target" | "status"} */
   let sortKey = $state("relative");
   let sortDir = $state("asc");
   let scanQuery = $state("");
@@ -84,13 +85,20 @@
       : [...scanData.entries];
   }
 
+  /** @param {SymlinkEntry} entry */
+  function getSortValue(entry) {
+    if (sortKey === "target") return entry.target || "";
+    if (sortKey === "status") return entry.status || "";
+    return entry.relative || "";
+  }
+
   /** @returns {SymlinkEntry[]} */
   function sortedEntries() {
     const entries = filteredEntries();
     const dir = sortDir === "asc" ? 1 : -1;
     entries.sort((a, b) => {
-      const left = (a[sortKey] || "").toString().toLowerCase();
-      const right = (b[sortKey] || "").toString().toLowerCase();
+      const left = getSortValue(a).toString().toLowerCase();
+      const right = getSortValue(b).toString().toLowerCase();
       if (left < right) return -1 * dir;
       if (left > right) return 1 * dir;
       return 0;
@@ -339,7 +347,7 @@
       lastFailures = result.failed || [];
       const failures = result.failed.length;
       if (failures) {
-        const needsAdmin = result.failed.some((item) => item.includes("os error 1314"));
+        const needsAdmin = result.failed.some((/** @type {string} */ item) => item.includes("os error 1314"));
         if (needsAdmin) {
           try {
             lastFailures = [];
@@ -662,7 +670,7 @@
           {confirmData?.total} items already exist in the target folder and will be replaced.
         </p>
         {#if confirmData?.non_symlink > 0}
-          <p class="warning">Includes {confirmData?.non_symlink} real files or folders.</p>
+          <p class="warning">Includes {confirmData?.non_symlink ?? 0} real files or folders.</p>
         {/if}
         {#if confirmData?.sample?.length}
           <div class="modal-list">
