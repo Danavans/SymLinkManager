@@ -59,6 +59,13 @@ struct PreviewResult {
 }
 
 #[derive(Debug, Serialize)]
+struct ConflictReport {
+    total: usize,
+    non_symlink: usize,
+    sample: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
 struct RecreateResult {
     created: usize,
     failed: Vec<String>,
@@ -528,6 +535,41 @@ fn preview_recreate(
 }
 
 #[tauri::command]
+fn check_recreate_conflicts(
+    data: ExportData,
+    dst_root: String,
+    mappings: Vec<MappingRule>,
+) -> Result<ConflictReport, String> {
+    let _ = mappings;
+    if dst_root.trim().is_empty() {
+        return Err("Select a valid target root.".to_string());
+    }
+
+    let mut total = 0usize;
+    let mut non_symlink = 0usize;
+    let mut sample = Vec::new();
+
+    for entry in data.entries.iter() {
+        let link = link_path(&dst_root, &entry.relative);
+        if let Ok(metadata) = fs::symlink_metadata(&link) {
+            total += 1;
+            if !metadata.file_type().is_symlink() {
+                non_symlink += 1;
+            }
+            if sample.len() < 10 {
+                sample.push(normalize_path_display(&link));
+            }
+        }
+    }
+
+    Ok(ConflictReport {
+        total,
+        non_symlink,
+        sample,
+    })
+}
+
+#[tauri::command]
 fn recreate_symlinks(
     data: ExportData,
     dst_root: String,
@@ -644,6 +686,7 @@ pub fn run() {
             export_symlinks,
             load_export,
             preview_recreate,
+            check_recreate_conflicts,
             recreate_symlinks,
             recreate_symlinks_admin,
             start_admin_recreate,

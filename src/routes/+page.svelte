@@ -15,6 +15,11 @@
   let sortKey = $state("relative");
   let sortDir = $state("asc");
   let scanQuery = $state("");
+  let confirmOpen = $state(false);
+  let confirmData = $state(null);
+  let previewSeq = 0;
+  let previewTimer = null;
+  let confirmResolve = null;
 
   function setSort(key) {
     if (sortKey === key) {
@@ -69,6 +74,23 @@
 
   function setStatus(message) {
     status = message;
+  }
+
+  function openConfirm(data) {
+    confirmData = data;
+    confirmOpen = true;
+    return new Promise((resolve) => {
+      confirmResolve = resolve;
+    });
+  }
+
+  function closeConfirm(accepted) {
+    confirmOpen = false;
+    const resolve = confirmResolve;
+    confirmResolve = null;
+    if (resolve) {
+      resolve(accepted);
+    }
   }
 
   function cleanMappings() {
@@ -161,16 +183,43 @@
     }
   }
 
-  async function previewRecreate() {
+  function scheduleAutoPreview() {
+    if (previewTimer) {
+      clearTimeout(previewTimer);
+      previewTimer = null;
+    }
+    if (activeTab !== "import") return;
+    if (!importData || !dstRoot) return;
+    previewTimer = setTimeout(() => {
+      previewRecreate(true);
+    }, 300);
+  }
+
+  $effect(() => {
+    activeTab;
+    importData;
+    dstRoot;
+    mappings;
+    scheduleAutoPreview();
+  });
+
+  async function previewRecreate(silent = false) {
     if (!importData) {
-      setStatus("Load an export file first.");
+      if (!silent) {
+        setStatus("Load an export file first.");
+      }
       return;
     }
     if (!dstRoot) {
-      setStatus("Select a target root.");
+      if (!silent) {
+        setStatus("Select a target root.");
+      }
       return;
     }
-    working = true;
+    if (!silent) {
+      working = true;
+    }
+    const seq = (previewSeq += 1);
     try {
       const result = await invoke("preview_recreate", {
         data: importData,
@@ -178,12 +227,19 @@
         mappings: cleanMappings(),
         maxPreview: 4
       });
+      if (seq !== previewSeq) return;
       preview = { roots: result.roots, sample: result.sample };
-      setStatus(`Preview ready. ${result.roots.length} target roots detected.`);
+      if (!silent) {
+        setStatus(`Preview ready. ${result.roots.length} target roots detected.`);
+      }
     } catch (err) {
-      setStatus(`Preview failed: ${err}`);
+      if (!silent) {
+        setStatus(`Preview failed: ${err}`);
+      }
     } finally {
-      working = false;
+      if (!silent) {
+        working = false;
+      }
     }
   }
 
@@ -198,6 +254,20 @@
     }
     working = true;
     try {
+      const conflicts = await invoke("check_recreate_conflicts", {
+        data: importData,
+        dstRoot,
+        mappings: cleanMappings()
+      });
+      if (conflicts.total > 0) {
+        working = false;
+        const accepted = await openConfirm(conflicts);
+        if (!accepted) {
+          setStatus("Recreate cancelled.");
+          return;
+        }
+        working = true;
+      }
       const result = await invoke("recreate_symlinks", {
         data: importData,
         dstRoot,
@@ -509,6 +579,31 @@
       {/if}
       </div>
     </section>
+  {/if}
+
+  {#if confirmOpen}
+    <div class="modal-backdrop" role="dialog" aria-modal="true">
+      <div class="modal">
+        <h3>Replace existing items?</h3>
+        <p class="muted">
+          {confirmData?.total} items already exist in the target folder and will be replaced.
+        </p>
+        {#if confirmData?.non_symlink > 0}
+          <p class="warning">Includes {confirmData.non_symlink} real files or folders.</p>
+        {/if}
+        {#if confirmData?.sample?.length}
+          <div class="modal-list">
+            {#each confirmData.sample as item}
+              <div class="modal-row">{item}</div>
+            {/each}
+          </div>
+        {/if}
+        <div class="row modal-actions">
+          <button type="button" class="ghost" on:click={() => closeConfirm(false)}>Cancel</button>
+          <button type="button" class="accent" on:click={() => closeConfirm(true)}>Replace and recreate</button>
+        </div>
+      </div>
+    </div>
   {/if}
 
   <div class="status-bubble">
@@ -989,6 +1084,59 @@
   .status-cell {
     text-align: right;
     vertical-align: middle;
+  }
+
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(8, 8, 8, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 30;
+  }
+
+  .modal {
+    width: min(92vw, 520px);
+    background: var(--panel-strong);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  }
+
+  .modal h3 {
+    margin: 0 0 10px;
+    font-size: 18px;
+  }
+
+  .modal p {
+    margin: 0 0 10px;
+  }
+
+  .modal-list {
+    margin: 8px 0 12px;
+    max-height: 180px;
+    overflow: auto;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(10, 10, 12, 0.6);
+    padding: 10px;
+    font-size: 12px;
+    color: var(--ink);
+  }
+
+  .modal-row {
+    padding: 4px 0;
+    word-break: break-all;
+  }
+
+  .modal-actions {
+    justify-content: flex-end;
+  }
+
+  .warning {
+    color: #ffb36b;
   }
 
   .status-bubble {
