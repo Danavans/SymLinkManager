@@ -1,6 +1,6 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
-  import { open, save, message } from "@tauri-apps/plugin-dialog";
+  import { open, save } from "@tauri-apps/plugin-dialog";
 
   let scanRoot = $state("");
   let dstRoot = $state("");
@@ -17,6 +17,8 @@
   let scanQuery = $state("");
   let confirmOpen = $state(false);
   let confirmData = $state(null);
+  let resultOpen = $state(false);
+  let resultData = $state(null);
   let previewSeq = 0;
   let previewTimer = null;
   let confirmResolve = null;
@@ -91,6 +93,16 @@
     if (resolve) {
       resolve(accepted);
     }
+  }
+
+  function openResult(data) {
+    resultData = data;
+    resultOpen = true;
+  }
+
+  function closeResult() {
+    resultOpen = false;
+    resultData = null;
   }
 
   function cleanMappings() {
@@ -337,13 +349,11 @@
       try {
         const result = await invoke("poll_admin_result", { jobId });
         if (result) {
-          const detail = result.sample_links?.length
-            ? `\nSample:\n${result.sample_links.join("\n")}`
-            : "";
-          await message(
-            `Recreate complete.\nCreated: ${result.created}\nFailed: ${result.failed}${detail}`,
-            { title: "Import Complete" }
-          );
+          openResult({
+            created: result.created,
+            failed: result.failed,
+            sample_links: result.sample_links || []
+          });
           setStatus(`Created ${result.created} symlinks. ${result.failed} failed.`);
           return;
         }
@@ -616,6 +626,33 @@
         <div class="row modal-actions">
           <button type="button" class="ghost" on:click={() => closeConfirm(false)}>Cancel</button>
           <button type="button" class="accent" on:click={() => closeConfirm(true)}>Replace and recreate</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  {#if resultOpen}
+    <div class="modal-backdrop" role="dialog" aria-modal="true">
+      <div class="modal">
+        <h3>Import Complete</h3>
+        <p class="muted">
+          Recreate complete.
+        </p>
+        <div class="result-grid">
+          <div>Created</div>
+          <div>{resultData?.created ?? 0}</div>
+          <div>Failed</div>
+          <div>{resultData?.failed ?? 0}</div>
+        </div>
+        {#if resultData?.sample_links?.length}
+          <div class="modal-list">
+            {#each resultData.sample_links as item}
+              <div class="modal-row">{item}</div>
+            {/each}
+          </div>
+        {/if}
+        <div class="row modal-actions">
+          <button type="button" class="accent" on:click={closeResult}>OK</button>
         </div>
       </div>
     </div>
@@ -1148,6 +1185,21 @@
 
   .modal-actions {
     justify-content: flex-end;
+  }
+
+  .result-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 6px 16px;
+    margin: 10px 0 12px;
+    font-size: 13px;
+  }
+
+  .result-grid div:nth-child(odd) {
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 11px;
   }
 
   .warning {
