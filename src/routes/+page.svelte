@@ -539,7 +539,7 @@
 
   .app {
     min-height: 100vh;
-    padding: 32px 32px 24px;
+    padding: 32px 32px 64px;
     box-sizing: border-box;
     background:
       radial-gradient(circle at 15% 20%, rgba(255, 155, 115, 0.15), transparent 55%),
