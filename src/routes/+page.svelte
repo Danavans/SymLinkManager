@@ -1,5 +1,6 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
+  import { onMount } from "svelte";
   import { open, save } from "@tauri-apps/plugin-dialog";
 
   let scanRoot = $state("");
@@ -19,6 +20,7 @@
   let confirmData = $state(null);
   let resultOpen = $state(false);
   let resultData = $state(null);
+  let osSep = $state("/");
   let previewSeq = 0;
   let previewTimer = null;
   let confirmResolve = null;
@@ -104,6 +106,19 @@
     resultOpen = false;
     resultData = null;
   }
+
+  function displayPath(value) {
+    if (!value) return "";
+    if (osSep === "\\") {
+      return value.replaceAll("/", "\\");
+    }
+    return value.replaceAll("\\", "/");
+  }
+
+  onMount(() => {
+    const ua = navigator.userAgent || "";
+    osSep = ua.includes("Windows") ? "\\" : "/";
+  });
 
   function cleanMappings() {
     return mappings
@@ -575,7 +590,7 @@
             <p class="label">Target roots detected</p>
               {#each preview.roots as item}
                 <div class="preview-row">
-                  <span>{item.root}</span>
+                  <span>{displayPath(item.root)}</span>
                   <span class="count">{item.count}</span>
                 </div>
               {/each}
@@ -585,17 +600,17 @@
               {#if preview.root_samples?.length}
                 {#each preview.root_samples as item}
                   <div class="preview-row two-col">
-                    <span>{item.link}</span>
+                    <span>{displayPath(item.link)}</span>
                     <span class="muted">-&gt;</span>
-                    <span>{item.target}</span>
+                    <span>{displayPath(item.target)}</span>
                   </div>
                 {/each}
               {:else}
                 {#each preview.sample as item}
                   <div class="preview-row two-col">
-                    <span>{item.link}</span>
+                    <span>{displayPath(item.link)}</span>
                     <span class="muted">-&gt;</span>
-                    <span>{item.target}</span>
+                    <span>{displayPath(item.target)}</span>
                   </div>
                 {/each}
               {/if}
