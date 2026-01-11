@@ -45,7 +45,7 @@
   /** @type {((accepted: boolean) => void) | null} */
   let confirmResolve = null;
 
-  /** @param {string} key */
+  /** @param {"relative" | "target" | "status"} key */
   function setSort(key) {
     if (sortKey === key) {
       sortDir = sortDir === "asc" ? "desc" : "asc";
@@ -669,7 +669,7 @@
         <p class="muted">
           {confirmData?.total} items already exist in the target folder and will be replaced.
         </p>
-        {#if confirmData?.non_symlink > 0}
+        {#if (confirmData?.non_symlink ?? 0) > 0}
           <p class="warning">Includes {confirmData?.non_symlink ?? 0} real files or folders.</p>
         {/if}
         {#if confirmData?.sample?.length}
