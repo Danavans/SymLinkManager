@@ -52,10 +52,18 @@ struct PreviewItem {
 }
 
 #[derive(Debug, Serialize)]
+struct PreviewRootSample {
+    root: String,
+    link: String,
+    target: String,
+}
+
+#[derive(Debug, Serialize)]
 struct PreviewResult {
     total: usize,
     roots: Vec<PreviewRoot>,
     sample: Vec<PreviewItem>,
+    root_samples: Vec<PreviewRootSample>,
 }
 
 #[derive(Debug, Serialize)]
@@ -517,20 +525,37 @@ fn preview_recreate(
         });
     }
     let mut counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut root_samples: std::collections::HashMap<String, PreviewRootSample> =
+        std::collections::HashMap::new();
     for entry in data.entries.iter() {
         let root = extract_root_bucket(&entry.target);
-        *counts.entry(root).or_insert(0) += 1;
+        *counts.entry(root.clone()).or_insert(0) += 1;
+        if !root_samples.contains_key(&root) {
+            let link = link_path(&dst_root, &entry.relative);
+            let target = remap_target(&entry.target, &mappings, &data.src_root, &dst_root);
+            root_samples.insert(
+                root.clone(),
+                PreviewRootSample {
+                    root,
+                    link: normalize_path_display(&link),
+                    target,
+                },
+            );
+        }
     }
     let mut roots: Vec<PreviewRoot> = counts
         .into_iter()
         .map(|(root, count)| PreviewRoot { root, count })
         .collect();
     roots.sort_by(|a, b| a.root.cmp(&b.root));
+    let mut root_samples: Vec<PreviewRootSample> = root_samples.into_values().collect();
+    root_samples.sort_by(|a, b| a.root.cmp(&b.root));
 
     Ok(PreviewResult {
         total: data.entries.len(),
         roots,
         sample,
+        root_samples,
     })
 }
 

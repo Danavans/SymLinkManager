@@ -7,7 +7,7 @@
   let scanData = $state({ src_root: "", entries: [] });
   let importData = $state(null);
   let mappings = $state([{ from: "", to: "" }]);
-  let preview = $state({ roots: [], sample: [] });
+  let preview = $state({ roots: [], sample: [], root_samples: [] });
   let status = $state("");
   let working = $state(false);
   let activeTab = $state("scan");
@@ -199,7 +199,8 @@
     activeTab;
     importData;
     dstRoot;
-    mappings;
+    const mappingKey = mappings.map((item) => `${item.from}|${item.to}`).join("||");
+    mappingKey;
     scheduleAutoPreview();
   });
 
@@ -228,7 +229,11 @@
         maxPreview: 4
       });
       if (seq !== previewSeq) return;
-      preview = { roots: result.roots, sample: result.sample };
+      preview = {
+        roots: result.roots,
+        sample: result.sample,
+        root_samples: result.root_samples || []
+      };
       if (!silent) {
         setStatus(`Preview ready. ${result.roots.length} target roots detected.`);
       }
@@ -567,13 +572,23 @@
           </div>
           <div class="preview bubble">
             <p class="label">Preview links</p>
-              {#each preview.sample as item}
-                <div class="preview-row two-col">
-                  <span>{item.link}</span>
-                  <span class="muted">-&gt;</span>
-                  <span>{item.target}</span>
-                </div>
-              {/each}
+              {#if preview.root_samples?.length}
+                {#each preview.root_samples as item}
+                  <div class="preview-row two-col">
+                    <span>{item.link}</span>
+                    <span class="muted">-&gt;</span>
+                    <span>{item.target}</span>
+                  </div>
+                {/each}
+              {:else}
+                {#each preview.sample as item}
+                  <div class="preview-row two-col">
+                    <span>{item.link}</span>
+                    <span class="muted">-&gt;</span>
+                    <span>{item.target}</span>
+                  </div>
+                {/each}
+              {/if}
           </div>
         </div>
       {/if}
