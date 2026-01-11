@@ -118,6 +118,16 @@ fn normalize_for_match(input: &str) -> String {
     value
 }
 
+
+fn normalize_for_match_keep_case(input: &str) -> String {
+    let mut value = input.replace('\\', "/");
+    value = collapse_slashes(&value);
+    while value.len() > 1 && value.ends_with('/') {
+        value.pop();
+    }
+    value
+}
+
 fn collapse_slashes(input: &str) -> String {
     fn collapse_single(input: &str) -> String {
         let mut out = String::with_capacity(input.len());
@@ -187,15 +197,39 @@ fn extract_root_bucket(path: &str) -> String {
         .to_string()
 }
 
+fn preferred_separator(path: &str) -> char {
+    let has_backslash = path.contains('\\');
+    let has_slash = path.contains('/');
+    if has_backslash && !has_slash {
+        return '\\';
+    }
+    if has_slash && !has_backslash {
+        return '/';
+    }
+    #[cfg(windows)]
+    {
+        '\\'
+    }
+    #[cfg(not(windows))]
+    {
+        '/'
+    }
+}
+
 fn join_root(root: &str, suffix: &str) -> String {
     if suffix.is_empty() {
         return root.to_string();
     }
+    let sep = preferred_separator(root);
     let mut out = root.to_string();
     if !out.ends_with('/') && !out.ends_with('\\') {
-        out.push('/');
+        out.push(sep);
     }
-    out.push_str(suffix);
+    let mut normalized_suffix = suffix.to_string();
+    if sep != '/' {
+        normalized_suffix = normalized_suffix.replace('/', &sep.to_string());
+    }
+    out.push_str(&normalized_suffix);
     out
 }
 
@@ -204,9 +238,10 @@ fn replace_root(target: &str, from: &str, to: &str) -> String {
         return target.to_string();
     }
     let target_norm = normalize_for_match(target);
+    let target_keep = normalize_for_match_keep_case(target);
     let from_norm = normalize_for_match(from);
     if target_norm == from_norm || target_norm.starts_with(&(from_norm.clone() + "/")) {
-        let mut suffix = &target_norm[from_norm.len()..];
+        let mut suffix = target_keep.get(from_norm.len()..).unwrap_or("");
         if let Some(stripped) = suffix.strip_prefix('/') {
             suffix = stripped;
         }
@@ -217,13 +252,14 @@ fn replace_root(target: &str, from: &str, to: &str) -> String {
 
 fn apply_mappings(target: &str, mappings: &[MappingRule]) -> String {
     let target_norm = normalize_for_match(target);
+    let target_keep = normalize_for_match_keep_case(target);
     for mapping in mappings {
         if mapping.from.trim().is_empty() || mapping.to.trim().is_empty() {
             continue;
         }
         let from_norm = normalize_for_match(&mapping.from);
         if target_norm == from_norm || target_norm.starts_with(&(from_norm.clone() + "/")) {
-            let mut suffix = &target_norm[from_norm.len()..];
+            let mut suffix = target_keep.get(from_norm.len()..).unwrap_or("");
             if let Some(stripped) = suffix.strip_prefix('/') {
                 suffix = stripped;
             }
