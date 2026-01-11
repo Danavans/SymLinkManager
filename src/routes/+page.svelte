@@ -534,6 +534,7 @@
     font-family: "Space Grotesk", "IBM Plex Sans", "Segoe UI", sans-serif;
     background: var(--bg);
     color: var(--ink);
+    overflow-y: scroll;
   }
 
   .app {
