@@ -3,28 +3,48 @@
   import { onMount } from "svelte";
   import { open, save } from "@tauri-apps/plugin-dialog";
 
+  /** @typedef {{ relative: string, target: string, status: string, link_is_dir?: boolean }} SymlinkEntry */
+  /** @typedef {{ src_root: string, entries: SymlinkEntry[] }} ExportData */
+  /** @typedef {{ from: string, to: string }} MappingRule */
+  /** @typedef {{ root: string, count: number }} PreviewRoot */
+  /** @typedef {{ link: string, target: string }} PreviewItem */
+  /** @typedef {{ root: string, link: string, target: string }} PreviewRootSample */
+  /** @typedef {{ roots: PreviewRoot[], sample: PreviewItem[], root_samples: PreviewRootSample[] }} PreviewState */
+  /** @typedef {{ total: number, non_symlink: number, sample: string[] }} ConflictReport */
+  /** @typedef {{ created: number, failed: number, sample_links: string[] }} ResultData */
+
   let scanRoot = $state("");
   let dstRoot = $state("");
+  /** @type {ExportData} */
   let scanData = $state({ src_root: "", entries: [] });
+  /** @type {ExportData | null} */
   let importData = $state(null);
+  /** @type {MappingRule[]} */
   let mappings = $state([{ from: "", to: "" }]);
+  /** @type {PreviewState} */
   let preview = $state({ roots: [], sample: [], root_samples: [] });
   let status = $state("");
   let working = $state(false);
   let activeTab = $state("scan");
+  /** @type {string[]} */
   let lastFailures = $state([]);
   let sortKey = $state("relative");
   let sortDir = $state("asc");
   let scanQuery = $state("");
   let confirmOpen = $state(false);
+  /** @type {ConflictReport | null} */
   let confirmData = $state(null);
   let resultOpen = $state(false);
+  /** @type {ResultData | null} */
   let resultData = $state(null);
   let osSep = $state("/");
   let previewSeq = 0;
+  /** @type {ReturnType<typeof setTimeout> | null} */
   let previewTimer = null;
+  /** @type {((accepted: boolean) => void) | null} */
   let confirmResolve = null;
 
+  /** @param {string} key */
   function setSort(key) {
     if (sortKey === key) {
       sortDir = sortDir === "asc" ? "desc" : "asc";
@@ -34,6 +54,7 @@
     sortDir = "asc";
   }
 
+  /** @returns {SymlinkEntry[]} */
   function filteredEntries() {
     const query = scanQuery.trim().toLowerCase();
     const rawTerms = query
@@ -63,6 +84,7 @@
       : [...scanData.entries];
   }
 
+  /** @returns {SymlinkEntry[]} */
   function sortedEntries() {
     const entries = filteredEntries();
     const dir = sortDir === "asc" ? 1 : -1;
@@ -76,10 +98,12 @@
     return entries;
   }
 
+  /** @param {string} message */
   function setStatus(message) {
     status = message;
   }
 
+  /** @param {ConflictReport} data */
   function openConfirm(data) {
     confirmData = data;
     confirmOpen = true;
@@ -88,6 +112,7 @@
     });
   }
 
+  /** @param {boolean} accepted */
   function closeConfirm(accepted) {
     confirmOpen = false;
     const resolve = confirmResolve;
@@ -97,6 +122,7 @@
     }
   }
 
+  /** @param {ResultData} data */
   function openResult(data) {
     resultData = data;
     resultOpen = true;
@@ -107,6 +133,7 @@
     resultData = null;
   }
 
+  /** @param {string} value */
   function displayPath(value) {
     if (!value) return "";
     if (osSep === "\\") {
@@ -120,6 +147,7 @@
     osSep = ua.includes("Windows") ? "\\" : "/";
   });
 
+  /** @returns {MappingRule[]} */
   function cleanMappings() {
     return mappings
       .map((item) => ({ from: item.from.trim(), to: item.to.trim() }))
@@ -130,6 +158,7 @@
     mappings = [...mappings, { from: "", to: "" }];
   }
 
+  /** @param {number} index */
   function removeMapping(index) {
     mappings = mappings.filter((_, idx) => idx !== index);
     if (mappings.length === 0) {
@@ -231,6 +260,7 @@
     scheduleAutoPreview();
   });
 
+  /** @param {boolean} [silent=false] */
   async function previewRecreate(silent = false) {
     if (!importData) {
       if (!silent) {
@@ -357,6 +387,7 @@
     }
   }
 
+  /** @param {string} jobId */
   async function pollAdminResult(jobId) {
     const maxTries = 60;
     for (let i = 0; i < maxTries; i += 1) {
@@ -412,14 +443,14 @@
     <button
       class:active={activeTab === "scan"}
       type="button"
-      on:click={() => (activeTab = "scan")}
+      onclick={() => (activeTab = "scan")}
     >
       Scan & Export
     </button>
     <button
       class:active={activeTab === "import"}
       type="button"
-      on:click={() => (activeTab = "import")}
+      onclick={() => (activeTab = "import")}
     >
       Import & Recreate
     </button>
@@ -433,21 +464,22 @@
           <span class="muted">Find symlinks in a folder tree.</span>
         </div>
         <div class="field">
-          <label>Folder to scan</label>
+          <label for="scan-root">Folder to scan</label>
           <div class="row">
             <input
               type="text"
               placeholder="D:/Medias/Streaming"
               bind:value={scanRoot}
+              id="scan-root"
             />
-            <button type="button" class="ghost" on:click={browseScan}>Browse</button>
+            <button type="button" class="ghost" onclick={browseScan}>Browse</button>
           </div>
         </div>
         <div class="row">
-          <button type="button" class="accent" on:click={runScan} disabled={working}>
+          <button type="button" class="accent" onclick={runScan} disabled={working}>
             Scan symlinks
           </button>
-          <button type="button" class="ghost" on:click={exportJson} disabled={working}>
+          <button type="button" class="ghost" onclick={exportJson} disabled={working}>
             Export JSON
           </button>
         </div>
@@ -471,19 +503,19 @@
           <thead>
             <tr>
               <th>
-                <button type="button" class="sort" on:click={() => setSort("relative")}>
+                <button type="button" class="sort" onclick={() => setSort("relative")}>
                   Relative path
                   <span class="caret" aria-hidden="true">{sortKey === "relative" ? (sortDir === "asc" ? "▲" : "▼") : ""}</span>
                 </button>
               </th>
               <th>
-                <button type="button" class="sort" on:click={() => setSort("target")}>
+                <button type="button" class="sort" onclick={() => setSort("target")}>
                   Target
                   <span class="caret" aria-hidden="true">{sortKey === "target" ? (sortDir === "asc" ? "▲" : "▼") : ""}</span>
                 </button>
               </th>
               <th>
-                <button type="button" class="sort" on:click={() => setSort("status")}>
+                <button type="button" class="sort" onclick={() => setSort("status")}>
                   Status
                   <span class="caret" aria-hidden="true">{sortKey === "status" ? (sortDir === "asc" ? "▲" : "▼") : ""}</span>
                 </button>
@@ -520,23 +552,24 @@
           <span class="muted">Remap roots, then recreate in bulk.</span>
         </div>
         <div class="row">
-          <button type="button" class="ghost" on:click={loadJson} disabled={working}>
+          <button type="button" class="ghost" onclick={loadJson} disabled={working}>
             Load JSON export
           </button>
         </div>
         <div class="field field-gap">
-          <label>Target root (links destination)</label>
+          <label for="target-root">Target root (links destination)</label>
           <div class="row">
             <input
               type="text"
               placeholder="/mnt/media"
               bind:value={dstRoot}
+              id="target-root"
             />
-            <button type="button" class="ghost" on:click={browseTarget}>Browse</button>
+            <button type="button" class="ghost" onclick={browseTarget}>Browse</button>
           </div>
         </div>
         <div class="field">
-          <label>Root remap rules</label>
+          <span class="field-label">Root remap rules</span>
           <p class="hint">Replace target prefixes when moving between drives or OS roots.</p>
         {#each mappings as mapping, index}
             <div class="row mapping-row">
@@ -555,7 +588,7 @@
                 type="button"
                 class="ghost small remove"
                 aria-label="Remove mapping"
-                on:click={() => removeMapping(index)}
+                onclick={() => removeMapping(index)}
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2" />
@@ -564,15 +597,15 @@
               </button>
             </div>
         {/each}
-        <button type="button" class="ghost small add-mapping" on:click={addMapping}>
+        <button type="button" class="ghost small add-mapping" onclick={addMapping}>
           Add mapping
         </button>
       </div>
       <div class="row">
-        <button type="button" class="ghost" on:click={previewRecreate} disabled={working}>
+        <button type="button" class="ghost" onclick={() => previewRecreate()} disabled={working}>
           Preview
         </button>
-        <button type="button" class="accent" on:click={recreate} disabled={working}>
+        <button type="button" class="accent" onclick={recreate} disabled={working}>
           Recreate
         </button>
       </div>
@@ -629,18 +662,18 @@
           {confirmData?.total} items already exist in the target folder and will be replaced.
         </p>
         {#if confirmData?.non_symlink > 0}
-          <p class="warning">Includes {confirmData.non_symlink} real files or folders.</p>
+          <p class="warning">Includes {confirmData?.non_symlink} real files or folders.</p>
         {/if}
         {#if confirmData?.sample?.length}
           <div class="modal-list">
-            {#each confirmData.sample as item}
+            {#each confirmData?.sample ?? [] as item}
               <div class="modal-row">{item}</div>
             {/each}
           </div>
         {/if}
         <div class="row modal-actions">
-          <button type="button" class="ghost" on:click={() => closeConfirm(false)}>Cancel</button>
-          <button type="button" class="accent" on:click={() => closeConfirm(true)}>Replace and recreate</button>
+          <button type="button" class="ghost" onclick={() => closeConfirm(false)}>Cancel</button>
+          <button type="button" class="accent" onclick={() => closeConfirm(true)}>Replace and recreate</button>
         </div>
       </div>
     </div>
@@ -661,13 +694,13 @@
         </div>
         {#if resultData?.sample_links?.length}
           <div class="modal-list">
-            {#each resultData.sample_links as item}
+            {#each resultData?.sample_links ?? [] as item}
               <div class="modal-row">{item}</div>
             {/each}
           </div>
         {/if}
         <div class="row modal-actions">
-          <button type="button" class="accent" on:click={closeResult}>OK</button>
+          <button type="button" class="accent" onclick={closeResult}>OK</button>
         </div>
       </div>
     </div>
@@ -867,7 +900,8 @@
     margin-bottom: 16px;
   }
 
-  .field label {
+  .field label,
+  .field .field-label {
     display: block;
     font-size: 13px;
     margin-bottom: 8px;
@@ -974,18 +1008,6 @@
 
   .add-mapping {
     margin-top: 8px;
-  }
-
-  .options {
-    margin-bottom: 12px;
-  }
-
-  .checkbox {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    font-size: 13px;
-    color: var(--muted);
   }
 
   .preview {
