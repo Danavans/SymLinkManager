@@ -284,8 +284,7 @@
 <main class="app">
   <header class="hero">
     <div>
-      <p class="eyebrow">Portable Symlink Toolkit</p>
-      <h1>SymLinkManager</h1>
+      <h1 class="hero-title">Symlink Manager</h1>
       <p class="subtitle">
         Scan, export, and recreate symlinks across Windows and Linux with bulk root remapping.
       </p>
@@ -570,17 +569,10 @@
     animation: rise 0.6s ease both;
   }
 
-  .eyebrow {
-    text-transform: uppercase;
-    letter-spacing: 0.2em;
-    font-size: 12px;
-    color: var(--accent);
-    margin: 0 0 6px;
-  }
-
-  h1 {
+  .hero-title {
     margin: 0 0 12px;
-    font-size: clamp(32px, 4vw, 44px);
+    font-size: clamp(38px, 5vw, 56px);
+    color: var(--accent);
   }
 
   .subtitle {
