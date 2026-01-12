@@ -39,6 +39,8 @@
   let resultOpen = $state(false);
   /** @type {ResultData | null} */
   let resultData = $state(null);
+  /** @type {"import" | "export" | null} */
+  let resultKind = $state(null);
   let osSep = $state("/");
   let previewSeq = 0;
   /** @type {ReturnType<typeof setTimeout> | null} */
@@ -132,7 +134,8 @@
   }
 
   /** @param {ResultData} data */
-  function openResult(data) {
+  function openResult(data, kind = "import") {
+    resultKind = kind;
     resultData = data;
     resultOpen = true;
   }
@@ -140,6 +143,7 @@
   function closeResult() {
     resultOpen = false;
     resultData = null;
+    resultKind = null;
   }
 
   /** @param {string} value */
@@ -224,6 +228,7 @@
         }
       });
       setStatus(`Exported JSON to ${path}`);
+      openResult({ created: entries.length, failed: 0, sample_links: [path] }, "export");
     } catch (err) {
       setStatus(`Export failed: ${err}`);
     } finally {
@@ -695,14 +700,14 @@
   {#if resultOpen}
     <div class="modal-backdrop" role="dialog" aria-modal="true">
       <div class="modal">
-        <h3>Import Complete</h3>
+        <h3>{resultKind === "export" ? "Export Complete" : "Import Complete"}</h3>
         <p class="muted">
-          Recreate complete.
+          {resultKind === "export" ? "Export completed." : "Recreate complete."}
         </p>
         <div class="result-grid">
-          <div>Created</div>
+          <div>{resultKind === "export" ? "Exported" : "Created"}</div>
           <div>{resultData?.created ?? 0}</div>
-          <div>Failed</div>
+          <div>{resultKind === "export" ? "Failed" : "Failed"}</div>
           <div>{resultData?.failed ?? 0}</div>
         </div>
         {#if resultData?.sample_links?.length}
