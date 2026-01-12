@@ -24,6 +24,7 @@
 - Recherche dynamique dans les resultats (multi-termes et exclusions avec `-term`).
 - Export respecte le filtre de recherche (si vide, export complet).
 - Preview import auto-refresh des remap rules + echantillon par racine detectee.
+- Clic sur une racine detectee pour pre-remplir une regle de remap.
 - Confirmation si des items existants seront remplaces.
 - Modals theme pour import/export.
 - Affichage des chemins adapte a l'OS (slashs coherents).
@@ -74,7 +75,7 @@
 - 2026-01-12
 
 ## Changelog
-- 2026-01-12: Renommage "Symlink Manager"; preview auto-refresh; confirmation replace; modals import/export; statuts Unreadable + Skipped; affichage chemins adapte OS; table scan 500px.
+- 2026-01-12: Renommage "Symlink Manager"; preview auto-refresh; confirmation replace; modals import/export; statuts Unreadable + Skipped; affichage chemins adapte OS; clic sur racines detectees; table scan 500px.
 - 2026-01-10: Fenetre Tauri 1380x745 centree; stats top-right avec Entries + Import loaded sur une ligne, separateur, centrage des labels/valeurs (y compris Scan root).
 - 2026-01-09: UI onglets + theme sombre, import/export, remap roots, elevation admin, preview roots + sample.
 - 2026-01-09: Recherche dynamique (multi-termes + exclusions), export filtre, status bubble.
