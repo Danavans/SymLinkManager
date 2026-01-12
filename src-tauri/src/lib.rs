@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::ErrorKind;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
@@ -37,6 +38,7 @@ struct MappingRule {
 struct ScanResult {
     src_root: String,
     entries: Vec<SymlinkEntry>,
+    skipped: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -483,10 +485,14 @@ fn scan_symlinks(root: String) -> Result<ScanResult, String> {
     }
 
     let mut entries = Vec::new();
+    let mut skipped = 0usize;
     for entry in WalkDir::new(&root_path).follow_links(false) {
         let entry = match entry {
             Ok(value) => value,
-            Err(_) => continue,
+            Err(_) => {
+                skipped += 1;
+                continue;
+            }
         };
         if !entry.file_type().is_symlink() {
             continue;
@@ -498,7 +504,15 @@ fn scan_symlinks(root: String) -> Result<ScanResult, String> {
         };
         let target = match fs::read_link(link_path) {
             Ok(value) => value,
-            Err(_) => continue,
+            Err(_) => {
+                entries.push(SymlinkEntry {
+                    relative: normalize_path_display(relative),
+                    target: "<unreadable>".to_string(),
+                    status: "Unreadable".to_string(),
+                    link_is_dir: infer_link_is_dir(Path::new(""), link_path),
+                });
+                continue;
+            }
         };
         let target_abs = if target.is_absolute() {
             target
@@ -508,10 +522,15 @@ fn scan_symlinks(root: String) -> Result<ScanResult, String> {
                 .unwrap_or(&root_path)
                 .join(target)
         };
-        let status = if fs::metadata(&target_abs).is_ok() {
-            "OK"
-        } else {
-            "Broken"
+        let status = match fs::metadata(&target_abs) {
+            Ok(_) => "OK",
+            Err(err) => {
+                if err.kind() == ErrorKind::PermissionDenied {
+                    "Unreadable"
+                } else {
+                    "Broken"
+                }
+            }
         };
         let link_is_dir = infer_link_is_dir(&target_abs, link_path);
         entries.push(SymlinkEntry {
@@ -525,6 +544,7 @@ fn scan_symlinks(root: String) -> Result<ScanResult, String> {
     Ok(ScanResult {
         src_root: normalize_path_display(&root_path),
         entries,
+        skipped,
     })
 }
 

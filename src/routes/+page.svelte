@@ -5,6 +5,7 @@
 
   /** @typedef {{ relative: string, target: string, status: string, link_is_dir?: boolean }} SymlinkEntry */
   /** @typedef {{ src_root: string, entries: SymlinkEntry[] }} ExportData */
+  /** @typedef {{ src_root: string, entries: SymlinkEntry[], skipped: number }} ScanResult */
   /** @typedef {{ from: string, to: string }} MappingRule */
   /** @typedef {{ root: string, count: number }} PreviewRoot */
   /** @typedef {{ link: string, target: string }} PreviewItem */
@@ -15,8 +16,8 @@
 
   let scanRoot = $state("");
   let dstRoot = $state("");
-  /** @type {ExportData} */
-  let scanData = $state({ src_root: "", entries: [] });
+  /** @type {ScanResult} */
+  let scanData = $state({ src_root: "", entries: [], skipped: 0 });
   /** @type {ExportData | null} */
   let importData = $state(null);
   /** @type {MappingRule[]} */
@@ -193,7 +194,8 @@
     try {
       const result = await invoke("scan_symlinks", { root: scanRoot });
       scanData = result;
-      setStatus(`Scan complete. ${result.entries.length} symlinks found.`);
+      const skippedNote = result.skipped ? ` Skipped ${result.skipped} entries.` : "";
+      setStatus(`Scan complete. ${result.entries.length} symlinks found.${skippedNote}`);
     } catch (err) {
       setStatus(`Scan failed: ${err}`);
     } finally {
@@ -498,6 +500,9 @@
       <div class="panel-header">
         <div>
           <h2>Scan Results</h2>
+          {#if scanData.skipped}
+            <span class="muted meta">Skipped: {scanData.skipped}</span>
+          {/if}
         </div>
         <input
           class="search-input"
@@ -537,13 +542,13 @@
               </tr>
             {:else}
               {#each sortedEntries() as entry}
-                <tr class={entry.status === "Broken" ? "broken" : ""}>
+                <tr class={entry.status === "Broken" ? "broken" : entry.status === "Unreadable" ? "unreadable" : ""}>
                   <td>{entry.relative}</td>
                   <td class="target-cell">
                     <span class="target-text">{entry.target}</span>
                   </td>
                   <td class="status-cell">
-                    <span class="status-dot {entry.status === "Broken" ? "bad" : "ok"}"></span>
+                    <span class="status-dot {entry.status === "Broken" ? "bad" : entry.status === "Unreadable" ? "warn" : "ok"}"></span>
                   </td>
                 </tr>
               {/each}
@@ -827,6 +832,13 @@
   }
 
   .stats .value {
+  .meta {
+    display: block;
+    font-size: 12px;
+    margin-top: 4px;
+  }
+
+
     font-size: 14px;
     word-break: break-all;
   }
@@ -1137,6 +1149,10 @@
     color: #ff6b6b;
   }
 
+  tr.unreadable td {
+    color: #ffb36b;
+  }
+
   .status-dot {
     display: inline-block;
     width: 10px;
@@ -1154,6 +1170,11 @@
   .status-dot.bad {
     background: #ff6b6b;
     box-shadow: 0 0 10px rgba(255, 107, 107, 0.5);
+  }
+
+  .status-dot.warn {
+    background: #ffb36b;
+    box-shadow: 0 0 10px rgba(255, 179, 107, 0.5);
   }
 
   .target-text,
