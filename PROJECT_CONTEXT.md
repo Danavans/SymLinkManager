@@ -3,7 +3,7 @@
 ## Resume rapide
 - Projet dans `D:\Medias\Divers\Tools\SymLinkManager\SymLinkManager` (Tauri + Svelte).
 - Objectif: scanner, exporter et recreer des symlinks Windows/Linux avec remap de racines.
-- UI en anglais, theme PlexTools (fond sombre global, cards sombres, texte clair, accents orange).
+- UI en anglais, theme sombre (fond sombre global, cards sombres, texte clair, accents orange).
 
 ## Agent instructions
 - See `AGENTS.md` for operational rules and editing guidance.
@@ -31,15 +31,15 @@
 ## Format JSON
 ```
 {
-  "src_root": "D:\Media\Library",
-  "entries": [
-    {
-      "relative": "Series\Show\link.mkv",
-      "target": "W:\Shows\Show\file.mkv",
-      "status": "OK",
-      "link_is_dir": true
-    }
-  ]
+ "src_root": "D:\Media\Library",
+ "entries": [
+ {
+  "relative": "Series\Show\link.mkv",
+  "target": "W:\Shows\Show\file.mkv",
+  "status": "OK",
+  "link_is_dir": true
+ }
+ ]
 }
 ```
 
@@ -75,5 +75,5 @@
 ## Changelog
 - 2026-01-12: Renommage "Symlink Manager"; preview auto-refresh; confirmation replace; modal resultat theme; statuts Unreadable + Skipped; affichage chemins adapte OS; table scan 500px.
 - 2026-01-10: Fenetre Tauri 1380x745 centree; stats top-right avec Entries + Import loaded sur une ligne, separateur, centrage des labels/valeurs (y compris Scan root).
-- 2026-01-09: UI onglets + theme PlexTools, import/export, remap roots, elevation admin, preview roots + sample.
+- 2026-01-09: UI onglets + theme sombre, import/export, remap roots, elevation admin, preview roots + sample.
 - 2026-01-09: Recherche dynamique (multi-termes + exclusions), export filtre, status bubble.

@@ -1,6 +1,6 @@
 # Symlink Manager
 
-Portable desktop app to scan, export, and recreate symlinks across Windows and Linux with bulk root remapping. Built with Tauri + Svelte and a PlexTools-inspired dark UI.
+Portable desktop app to scan, export, and recreate symlinks across Windows and Linux with bulk root remapping. Built with Tauri + Svelte and a dark UI.
 
 ## Features
 - Scan a folder tree for symlinks with status: OK, Broken, Unreadable.
