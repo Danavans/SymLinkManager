@@ -476,7 +476,7 @@
           <div class="row">
             <input
               type="text"
-              placeholder="D:/Medias/Streaming"
+              placeholder="D:\Media\Library"
               bind:value={scanRoot}
               id="scan-root"
             />
@@ -569,7 +569,7 @@
           <div class="row">
             <input
               type="text"
-              placeholder="/mnt/media"
+              placeholder="D:\Media\Links"
               bind:value={dstRoot}
               id="target-root"
             />
@@ -583,13 +583,13 @@
             <div class="row mapping-row">
               <input
                 type="text"
-                placeholder="Z:/magnets"
+                placeholder="W:\Shows"
                 bind:value={mapping.from}
               />
               <span class="arrow">-&gt;</span>
               <input
                 type="text"
-                placeholder="/mnt/webdav/alldebrid/magnets"
+                placeholder="/mnt/media/shows"
                 bind:value={mapping.to}
               />
               <button
