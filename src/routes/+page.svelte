@@ -501,7 +501,7 @@
         <div>
           <h2>Scan Results</h2>
           {#if scanData.skipped}
-            <span class="muted meta">Skipped: {scanData.skipped}</span>
+            <div class="muted">Skipped: {scanData.skipped}</div>
           {/if}
         </div>
         <input
@@ -832,12 +832,6 @@
   }
 
   .stats .value {
-  .meta {
-    display: block;
-    font-size: 12px;
-    margin-top: 4px;
-  }
-
 
     font-size: 14px;
     word-break: break-all;
