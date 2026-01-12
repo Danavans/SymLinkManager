@@ -160,6 +160,20 @@
     osSep = ua.includes("Windows") ? "\\" : "/";
   });
 
+  /** @param {string} root */
+  function addMappingFromRoot(root) {
+    const trimmed = root.trim();
+    if (!trimmed) return;
+    const index = mappings.findIndex((item) => !item.from.trim());
+    if (index >= 0) {
+      mappings = mappings.map((item, idx) =>
+        idx == index ? { ...item, from: trimmed } : item
+      );
+      return;
+    }
+    mappings = [...mappings, { from: trimmed, to: "" }];
+  }
+
   /** @returns {MappingRule[]} */
   function cleanMappings() {
     return mappings
@@ -640,8 +654,15 @@
           <div class="preview bubble">
             <p class="label">Target roots detected</p>
               {#each preview.roots as item}
-                <div class="preview-row">
-                  <span>{displayPath(item.root)}</span>
+                <div class="preview-row root-row">
+                  <button
+                    type="button"
+                    class="root-link"
+                    onclick={() => addMappingFromRoot(item.root)}
+                    title="Add to remap rules"
+                  >
+                    {displayPath(item.root)}
+                  </button>
                   <span class="count">{item.count}</span>
                 </div>
               {/each}
@@ -1069,6 +1090,25 @@
 
   .preview-row {
     display: grid;
+  .root-row {
+    align-items: center;
+  }
+
+  .root-link {
+    background: transparent;
+    border: none;
+    color: var(--ink);
+    text-align: left;
+    padding: 0;
+    font: inherit;
+    cursor: pointer;
+    word-break: break-all;
+  }
+
+  .root-link:hover {
+    color: var(--accent);
+  }
+
     grid-template-columns: 1fr auto;
     gap: 12px;
     font-size: 12px;
