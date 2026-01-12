@@ -1092,7 +1092,7 @@
   }
 
   .table-wrap {
-    max-height: 360px;
+    max-height: 500px;
     overflow: auto;
     border-radius: 12px;
   }
