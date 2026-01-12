@@ -162,7 +162,7 @@
 
   /** @param {string} root */
   function addMappingFromRoot(root) {
-    const trimmed = root.trim();
+    const trimmed = displayPath(root).trim();
     if (!trimmed) return;
     const index = mappings.findIndex((item) => !item.from.trim());
     if (index >= 0) {
