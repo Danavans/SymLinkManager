@@ -290,6 +290,7 @@ fn normalize_relative_for_os(relative: &str) -> String {
 fn link_path(dst_root: &str, relative: &str) -> PathBuf {
     let normalized = normalize_relative_for_os(relative);
     PathBuf::from(dst_root).join(normalized)
+}
 
 fn recreate_symlinks_inner(
     data: ExportData,
