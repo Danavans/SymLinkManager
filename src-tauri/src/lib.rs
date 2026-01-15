@@ -276,9 +276,20 @@ fn remap_target(target: &str, mappings: &[MappingRule], src_root: &str, dst_root
     replace_root(&mapped, src_root, dst_root)
 }
 
-fn link_path(dst_root: &str, relative: &str) -> PathBuf {
-    PathBuf::from(dst_root).join(relative)
+fn normalize_relative_for_os(relative: &str) -> String {
+    #[cfg(unix)]
+    {
+        return relative.replace('\\', "/");
+    }
+    #[cfg(windows)]
+    {
+        return relative.to_string();
+    }
 }
+
+fn link_path(dst_root: &str, relative: &str) -> PathBuf {
+    let normalized = normalize_relative_for_os(relative);
+    PathBuf::from(dst_root).join(normalized)
 
 fn recreate_symlinks_inner(
     data: ExportData,
