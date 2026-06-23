@@ -1,7 +1,7 @@
 {
   "name": "symlinkmanager",
-  "version": "0.1.0",
-  "description": "",
+  "version": "1.0.0",
+  "description": "Portable desktop app to scan, export, and recreate symlinks.",
   "type": "module",
   "scripts": {
     "dev": "vite dev",

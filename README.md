@@ -1,94 +1,111 @@
 # Symlink Manager
 
-Portable desktop app to scan, export, and recreate symlinks across Windows and Linux with bulk root remapping. Built with Tauri + Svelte and a dark UI.
+Symlink Manager is a portable desktop app for backing up and recreating symbolic links.
 
-## Status
-Personal utility in early stable use. The current focus is reliable local scanning, JSON export/import, root remapping, and portable desktop builds.
+It is useful when you move a media library, migrate between drives, rebuild a machine, or need to recreate a group of links on another Windows or Linux setup. The app scans a folder, finds symlinks, exports them to JSON, then recreates them later with optional root remapping.
 
-## Supported platforms
-- Windows: supported. Symlink creation requires Developer Mode or admin rights; the app can request elevation when needed.
-- Linux: supported for scanning and recreating Linux symlinks with normal filesystem permissions.
-- macOS: not a tested target.
+## What It Does
 
-## Features
-- Click detected roots to auto-fill remap rules.
-- Scan a folder tree for symlinks with status: OK, Broken, Unreadable.
-- Export results to JSON (respects current search filter).
-- Import JSON and recreate symlinks at a new destination root.
-- Root remap rules to swap target prefixes (Windows and Linux).
-- Auto preview refresh when remap rules change.
-- Windows admin elevation flow when needed.
-- Warnings before replacing existing items.
-- Skipped count when scan hits unreadable folders.
+- Scans a folder tree and finds symbolic links.
+- Shows whether each target is OK, Broken, or Unreadable.
+- Exports the scan result to a JSON file.
+- Imports a previous JSON export.
+- Recreates symlinks in another destination folder.
+- Remaps target roots, for example from a Windows drive to a Linux mount path.
+- Warns before replacing existing items.
+- Requests admin elevation on Windows when symlink creation needs it.
 
-## Quick start (dev)
-```bash
-npm install
-npm run tauri dev
-```
+## Portable App
 
-## Requirements
-- Node.js and npm.
-- Rust toolchain.
-- Tauri system prerequisites for the target OS.
+Symlink Manager is meant to be used as a portable app.
 
-## Usage
-### Scan & Export
-1) Choose a folder to scan.
-2) Click "Scan symlinks".
-3) Review results, filter if needed.
-4) Click "Export JSON".
+Download the release file for your operating system, place it wherever you want, and launch it directly. No project setup is required to use the app.
 
-### Import & Recreate
-1) Load a JSON export.
-2) Set the destination root (where symlinks will be created).
-3) Add root remap rules as needed.
-4) Click a detected root to auto-fill a remap rule if needed.
-5) Review the preview (auto refreshes as you type).
-6) Click "Recreate" and confirm if items will be replaced.
+## Supported Platforms
 
-### Root remap rules
-Rules replace the start of each `target` path. The first rule that matches wins.
+- Windows: tested and supported.
+- Linux: tested and supported.
+- macOS: not tested.
+
+On Windows, creating symlinks may require Developer Mode or administrator rights. If Windows blocks symlink creation, the app can ask for elevation.
+
+On Linux, the app needs normal write permissions in the destination folder. If the Linux file does not start by double-clicking, open its file properties and allow it to run as a program.
+
+## How To Use
+
+### Scan And Export
+
+1. Open the app.
+2. Go to Scan & Export.
+3. Choose the folder you want to scan.
+4. Click Scan symlinks.
+5. Review the results.
+6. Use the search field if you only want to export part of the scan.
+7. Click Export JSON and save the file.
+
+The JSON export is your symlink backup. Keep it somewhere safe if you plan to rebuild or move a library later.
+
+### Import And Recreate
+
+1. Go to Import & Recreate.
+2. Load a JSON export.
+3. Choose the target root where the links should be created.
+4. Add root remap rules if paths changed.
+5. Check the preview.
+6. Click Recreate.
+7. Confirm if the app warns that existing items will be replaced.
+
+The app must run on the operating system where you want to create the links. Use the Windows version to create Windows symlinks, and the Linux version to create Linux symlinks.
+
+## Root Remap Rules
+
+Root remap rules replace the beginning of target paths before links are recreated.
 
 Example:
-```
+
+```text
 W:\Shows -> /mnt/media/shows
 D:\Media -> /mnt/media
 ```
 
-### Search filter (scan results)
-- Multiple terms separated by commas: `arcane, game of thrones`
-- Exclude terms with `-`: `arcane, -1080p`
-- Export respects the current filter (empty filter exports everything).
+The first matching rule wins. If no rule matches, the original target path is used.
 
-## Status meanings
-- OK: target exists.
-- Broken: target is missing.
-- Unreadable: target exists but cannot be accessed or read.
+## Search Filter
+
+The scan results can be filtered before export.
+
+- Use multiple terms separated by commas.
+- Prefix a term with `-` to exclude it.
+- If the search field is empty, the full scan is exported.
+
+Example:
+
+```text
+arcane, -1080p
+```
+
+## Status Meanings
+
+- OK: the symlink target exists.
+- Broken: the symlink target is missing.
+- Unreadable: the target exists, but the app cannot access it.
+- Skipped: some folders or files could not be read during the scan.
+
+## Release Files
+
+For a normal release, upload one Windows build and one Linux build.
+
+Recommended names:
+
+- `Symlink-Manager-v1.0.0-Windows-x64.exe`
+- `Symlink-Manager-v1.0.0-Linux-x64`
+
+If you package the Linux build as an archive, use a clear name such as:
+
+- `Symlink-Manager-v1.0.0-Linux-x64.tar.gz`
 
 ## Notes
-- Windows symlink creation requires Developer Mode or admin rights.
-- Linux requires write permissions to the destination root.
-- The app must run on the OS that will create the symlinks.
 
-## Build (portable)
-```bash
-npm run tauri build
-```
-Windows exe will be in `src-tauri/target/release/`.
+Symlink Manager only manages symbolic links. It does not copy the real target files.
 
-## FAQ
-**Why do I see "Skipped" in scan results?**
-Some folders or files could not be read during the scan (permissions or read errors). Those entries are counted as skipped.
-
-**What is the difference between Broken and Unreadable?**
-Broken means the target is missing. Unreadable means the target exists but cannot be accessed or read.
-
-**Why do I get an admin prompt on Windows?**
-Creating symlinks requires elevated privileges unless Developer Mode is enabled.
-
-**Can I recreate Linux symlinks from Windows?**
-No. The app uses the OS filesystem APIs, so it must run on the target OS (Linux to create Linux symlinks, Windows for Windows symlinks).
-
-**Do remap rules update the preview automatically?**
-Yes. The preview refreshes as you edit remap rules or destination root.
+Before recreating links into an important folder, check the preview and replacement warning carefully.

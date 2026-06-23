@@ -1,8 +1,8 @@
 [package]
 name = "symlinkmanager"
-version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+version = "1.0.0"
+description = "Portable desktop app to scan, export, and recreate symlinks."
+authors = ["Danavans"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
