@@ -2,6 +2,14 @@
 
 Portable desktop app to scan, export, and recreate symlinks across Windows and Linux with bulk root remapping. Built with Tauri + Svelte and a dark UI.
 
+## Status
+Personal utility in early stable use. The current focus is reliable local scanning, JSON export/import, root remapping, and portable desktop builds.
+
+## Supported platforms
+- Windows: supported. Symlink creation requires Developer Mode or admin rights; the app can request elevation when needed.
+- Linux: supported for scanning and recreating Linux symlinks with normal filesystem permissions.
+- macOS: not a tested target.
+
 ## Features
 - Click detected roots to auto-fill remap rules.
 - Scan a folder tree for symlinks with status: OK, Broken, Unreadable.
@@ -18,6 +26,11 @@ Portable desktop app to scan, export, and recreate symlinks across Windows and L
 npm install
 npm run tauri dev
 ```
+
+## Requirements
+- Node.js and npm.
+- Rust toolchain.
+- Tauri system prerequisites for the target OS.
 
 ## Usage
 ### Scan & Export

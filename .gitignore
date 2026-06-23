@@ -1,10 +1,32 @@
-.DS_Store
-node_modules
-/build
-/.svelte-kit
-/package
+# Dependencies
+node_modules/
+
+# SvelteKit / Vite outputs
+/build/
+/.svelte-kit/
+/package/
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Tauri / Rust outputs
+/src-tauri/target/
+/src-tauri/gen/
+Cargo.lock.tmp
+
+# Local environment and private config
 .env
 .env.*
 !.env.example
-vite.config.js.timestamp-*
-vite.config.ts.timestamp-*
+*.local
+
+# Logs and diagnostics
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+Desktop.ini
