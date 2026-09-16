@@ -22,7 +22,7 @@
   /** @type {ExportData | null} */
   let importData = $state(null);
   /** @type {MappingRule[]} */
-  let mappings = $state([{ from: "", to: "" }]);
+  let mappings = $state([]);
   /** @type {PreviewState} */
   let preview = $state({ roots: [], sample: [], root_samples: [] });
   let status = $state("");
@@ -212,13 +212,6 @@
   function addMappingFromRoot(root) {
     const trimmed = displayPath(root).trim();
     if (!trimmed) return;
-    const index = mappings.findIndex((item) => !item.from.trim());
-    if (index >= 0) {
-      mappings = mappings.map((item, idx) =>
-        idx == index ? { ...item, from: trimmed } : item,
-      );
-      return;
-    }
     mappings = [...mappings, { from: trimmed, to: "" }];
   }
 
@@ -236,9 +229,6 @@
   /** @param {number} index */
   function removeMapping(index) {
     mappings = mappings.filter((_, idx) => idx !== index);
-    if (mappings.length === 0) {
-      mappings = [{ from: "", to: "" }];
-    }
   }
 
   async function browseScan() {
@@ -332,6 +322,7 @@
       const result = await invoke("load_export", { path: selected });
       importData = result;
       importName = selected.split(/[\\/]/).pop() || selected;
+      mappings = [];
       preview = { roots: [], sample: [], root_samples: [] };
       lastFailures = [];
       setStatus(`Loaded ${result.entries.length} entries.`);
@@ -841,24 +832,25 @@
               </div>
               <button class="ghost" onclick={addMapping}>+ Add rule</button>
             </div>
-            <div class="mapping-labels">
-              <span>ORIGINAL TARGET PREFIX</span><span>NEW TARGET PREFIX</span>
-            </div>
-            {#each mappings as mapping, index}<div class="mapping-row">
-                <input
-                  aria-label={"Original prefix, rule " + (index + 1)}
-                  placeholder={osSep === "/" ? "/old/media" : "W:\\Shows"}
-                  bind:value={mapping.from}
-                /><span class="arrow">→</span><input
-                  aria-label={"New prefix, rule " + (index + 1)}
-                  placeholder={osSep === "/" ? "/mnt/media" : "E:\\Shows"}
-                  bind:value={mapping.to}
-                /><button
-                  class="remove"
-                  aria-label={"Remove rule " + (index + 1)}
-                  onclick={() => removeMapping(index)}>×</button
-                >
-              </div>{/each}
+            {#if mappings.length}<div class="mapping-labels">
+                <span>ORIGINAL TARGET PREFIX</span><span>NEW TARGET PREFIX</span>
+              </div>
+              {#each mappings as mapping, index}<div class="mapping-row">
+                  <input
+                    aria-label={"Original prefix, rule " + (index + 1)}
+                    placeholder={osSep === "/" ? "/old/media" : "W:\\Shows"}
+                    bind:value={mapping.from}
+                  /><span class="arrow">→</span><input
+                    aria-label={"New prefix, rule " + (index + 1)}
+                    placeholder={osSep === "/" ? "/mnt/media" : "E:\\Shows"}
+                    bind:value={mapping.to}
+                  /><button
+                    class="remove"
+                    aria-label={"Remove rule " + (index + 1)}
+                    onclick={() => removeMapping(index)}>×</button
+                  >
+                </div>{/each}
+            {/if}
             {#if incompleteMapping}<p class="warning hint">
                 Complete both prefixes in each rule, or remove the unfinished
                 rule.
@@ -868,15 +860,11 @@
               destination.
             </p>
           </section>
-          <section class="panel preview-panel">
+          <section class="panel preview-panel" aria-busy={previewBusy}>
             <div class="results-heading">
-              <div>
-                <h2>Review the connections</h2>
-                <p>
-                  {previewBusy
-                    ? "Updating preview…"
-                    : "Preview updates automatically as you edit."}
-                </p>
+              <div class="section-label">
+                <span class="step">04</span>
+                <div><h2>Review the connections</h2></div>
               </div>
             </div>
             {#if previewError}<p class="warning preview-warning" role="alert">
@@ -1686,6 +1674,12 @@
   .preview-panel {
     padding: 0;
     overflow: hidden;
+  }
+  .preview-panel .results-heading {
+    padding: 16px 20px;
+  }
+  .preview-panel .section-label {
+    margin: 0;
   }
   .preview-grid {
     display: grid;

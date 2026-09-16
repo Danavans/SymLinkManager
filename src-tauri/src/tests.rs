@@ -218,6 +218,7 @@ fn preview_recreate_handles_repeated_remap_updates() {
     let initial =
         preview_recreate_inner(snapshot.clone(), destination.clone(), vec![], 20).unwrap();
     assert_eq!(initial.total, 1);
+    assert_eq!(initial.root_samples[0].target, "/target");
 
     for prefix in ["/n", "/ne", "/new", "/new-target"] {
         let preview = preview_recreate_inner(
