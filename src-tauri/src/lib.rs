@@ -106,6 +106,8 @@ struct SavedWindowState {
     height: u32,
     x: i32,
     y: i32,
+    #[serde(default)]
+    inner_size: bool,
     maximized: bool,
 }
 
@@ -151,7 +153,7 @@ fn persist_window_state(window: &WebviewWindow, path: &Path) {
     let state = if maximized {
         read_window_state(path).map(|state| SavedWindowState { maximized, ..state })
     } else {
-        let (Ok(size), Ok(position)) = (window.outer_size(), window.outer_position()) else {
+        let (Ok(size), Ok(position)) = (window.inner_size(), window.outer_position()) else {
             return;
         };
         Some(SavedWindowState {
@@ -159,6 +161,7 @@ fn persist_window_state(window: &WebviewWindow, path: &Path) {
             height: size.height,
             x: position.x,
             y: position.y,
+            inner_size: true,
             maximized,
         })
     };
@@ -172,7 +175,11 @@ fn restore_window_state(window: &WebviewWindow) {
     let Some(path) = window_state_path(window) else {
         return;
     };
+    // Tauri's size APIs use physical pixels; set_size and inner_size must stay paired.
+    // Older state files stored outer dimensions, so ignore them rather than reintroduce drift.
     let saved = read_window_state(&path);
+    let restore_maximized = saved.is_some_and(|state| state.maximized);
+    let saved = saved.filter(|state| state.inner_size);
     if let Some(state) = saved.filter(|state| saved_window_is_visible(window, *state)) {
         let _ = window.set_size(tauri::PhysicalSize::new(state.width, state.height));
         let _ = window.set_position(tauri::PhysicalPosition::new(state.x, state.y));
@@ -199,7 +206,7 @@ fn restore_window_state(window: &WebviewWindow) {
         let _ = window.set_size(tauri::PhysicalSize::new(width, height));
     }
     let _ = window.center();
-    if saved.is_some_and(|state| state.maximized) {
+    if restore_maximized {
         let _ = window.maximize();
     }
 }

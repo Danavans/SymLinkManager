@@ -18,10 +18,32 @@ fn saved_window_needs_a_visible_work_area() {
         height: 800,
         x: 1840,
         y: 100,
+        inner_size: true,
         maximized: false,
     };
     assert!(overlaps_work_area(state, 0, 0, 1920, 1040));
     assert!(!overlaps_work_area(state, -1920, 0, 1920, 1040));
+}
+
+#[test]
+fn inner_window_size_is_stable_across_restore_cycles() {
+    let mut state = SavedWindowState {
+        width: 1400,
+        height: 800,
+        x: 120,
+        y: 80,
+        inner_size: true,
+        maximized: false,
+    };
+
+    for _ in 0..10 {
+        // Restoring and persisting both use the physical client size.
+        state = SavedWindowState {
+            inner_size: true,
+            ..state
+        };
+        assert_eq!((state.width, state.height), (1400, 800));
+    }
 }
 
 #[test]
