@@ -206,10 +206,6 @@
       if (previewTimer) clearTimeout(previewTimer);
       previewSeq++;
     };
-    return () => {
-      if (previewTimer) clearTimeout(previewTimer);
-      previewSeq++;
-    };
   });
 
   /** @param {string} root */
@@ -231,60 +227,6 @@
     return mappings
       .map((item) => ({ from: item.from.trim(), to: item.to.trim() }))
       .filter((item) => item.from && item.to);
-  }
-
-  /** @param {string} value */
-  function normalizedPath(value) {
-    let path = value.replaceAll("\\", "/").replace(/\/{2,}/g, "/");
-    if (path.length > 1) path = path.replace(/\/+$/, "");
-    return osSep === "\\" ? path.toLowerCase() : path;
-  }
-
-  /** @param {string} target @param {string} from @param {string} to */
-  function replacePreviewRoot(target, from, to) {
-    const source = normalizedPath(from);
-    const value = normalizedPath(target);
-    if (!source || !to.trim()) return target;
-    if (value === source) return to;
-    if (!value.startsWith(source + "/")) return target;
-    const suffix = target.replaceAll("\\", "/").split("/").slice(source.split("/").length).join(osSep);
-    return `${to.replace(/[\\/]$/, "")}${osSep}${suffix}`;
-  }
-
-  /** @param {string} target */
-  function previewTarget(target) {
-    let mapped = target;
-    for (const rule of cleanMappings()) {
-      const next = replacePreviewRoot(mapped, rule.from, rule.to);
-      if (next !== mapped) {
-        mapped = next;
-        break;
-      }
-    }
-    return replacePreviewRoot(mapped, importData?.src_root || "", dstRoot);
-  }
-
-  function localPreview() {
-    const data = importData;
-    if (!data || !dstRoot.trim() || !preview.root_samples.length) return preview;
-    return {
-      roots: preview.roots,
-      sample: [],
-      root_samples: preview.root_samples.map((item) => {
-        const root = normalizedPath(item.root);
-        const entry = data.entries.find((candidate) => {
-          const target = normalizedPath(candidate.target);
-          return target === root || target.startsWith(root + "/");
-        });
-        if (!entry) return item;
-        const relative = entry.relative.replaceAll("\\", osSep).replaceAll("/", osSep);
-        return {
-          root: item.root,
-          link: `${dstRoot.replace(/[\\/]$/, "")}${osSep}${relative}`,
-          target: previewTarget(entry.target),
-        };
-      }),
-    };
   }
 
   function addMapping() {
@@ -410,7 +352,6 @@
     }
     if (activeTab !== "import") return;
     if (!importData || !dstRoot) return;
-    preview = localPreview();
     previewBusy = true;
     previewTimer = setTimeout(() => {
       previewRecreate(true);

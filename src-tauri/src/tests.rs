@@ -209,3 +209,29 @@ fn root_mapping_handles_root_and_unicode() {
     ];
     assert_eq!(apply_mappings("/a/file", &rules), "/a/file");
 }
+
+#[test]
+fn preview_recreate_handles_repeated_remap_updates() {
+    let snapshot = data("series/episode.mkv");
+    let destination = "/new-library".to_string();
+
+    let initial =
+        preview_recreate_inner(snapshot.clone(), destination.clone(), vec![], 20).unwrap();
+    assert_eq!(initial.total, 1);
+
+    for prefix in ["/n", "/ne", "/new", "/new-target"] {
+        let preview = preview_recreate_inner(
+            snapshot.clone(),
+            destination.clone(),
+            vec![MappingRule {
+                from: "/target".into(),
+                to: prefix.into(),
+            }],
+            20,
+        )
+        .unwrap();
+        assert_eq!(preview.total, 1);
+        assert_eq!(preview.root_samples.len(), 1);
+        assert!(preview.root_samples[0].target.starts_with(prefix));
+    }
+}

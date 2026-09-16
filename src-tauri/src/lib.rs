@@ -867,8 +867,7 @@ fn load_export(path: String) -> Result<ExportData, String> {
     Ok(data)
 }
 
-#[tauri::command]
-fn preview_recreate(
+fn preview_recreate_inner(
     data: ExportData,
     dst_root: String,
     mappings: Vec<MappingRule>,
@@ -921,6 +920,20 @@ fn preview_recreate(
         sample,
         root_samples,
     })
+}
+
+#[tauri::command]
+async fn preview_recreate(
+    data: ExportData,
+    dst_root: String,
+    mappings: Vec<MappingRule>,
+    max_preview: usize,
+) -> Result<PreviewResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        preview_recreate_inner(data, dst_root, mappings, max_preview)
+    })
+    .await
+    .map_err(|err| err.to_string())?
 }
 
 #[tauri::command]
