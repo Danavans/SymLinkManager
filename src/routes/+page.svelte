@@ -815,7 +815,7 @@
               </p>
             </section>
           </div>
-          <section class="panel mapping-panel">
+          <section class="panel mapping-panel" class:has-rules={mappings.length > 0}>
             <div class="results-heading">
               <div class="section-label">
                 <span class="step">03</span>
@@ -1623,9 +1623,16 @@
   }
   .mapping-panel {
     margin-bottom: 18px;
+    padding-block: 12px;
+  }
+  .mapping-panel.has-rules {
+    padding-block: 16px;
   }
   .mapping-panel .results-heading {
     padding: 0;
+    margin-bottom: 0;
+  }
+  .mapping-panel.has-rules .results-heading {
     margin-bottom: 22px;
   }
   .mapping-panel .section-label {
@@ -1962,6 +1969,12 @@
     }
     .panel {
       padding: 17px;
+    }
+    .mapping-panel {
+      padding-block: 12px;
+    }
+    .mapping-panel.has-rules {
+      padding-block: 16px;
     }
     .results,
     .preview-panel {
