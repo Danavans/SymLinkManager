@@ -584,35 +584,20 @@
         ></button
       >
     </nav>
-    <div class="sidebar-note">
-      <span class="connection">↗</span><strong
-        >Small links.<br />Big possibilities.</strong
-      >
-      <p>Your files stay where they are.<br />Your connections go with you.</p>
-    </div>
     <div class="platform">
-      <span class="dot"></span> LOCAL WORKSPACE
-      <small>Windows + Linux · Portable</small>
+      v1.1.0
     </div>
   </aside>
   <div class="workspace">
-    <header class="topbar">
-      <span
-        >Workspace <span class="slash">/</span>
-        {activeTab === "scan" ? "Scan & export" : "Import & recreate"}</span
-      ><span class="local-tag">↗ &nbsp; Files stay local</span>
-    </header>
     <div class="content">
       <header class="page-heading">
         <div>
-          <p class="eyebrow">
-            {activeTab === "scan"
-              ? "DISCOVER & PRESERVE"
-              : "RECONNECT YOUR LIBRARY"}
-          </p>
+          {#if activeTab === "import"}<p class="eyebrow"
+              >RECONNECT YOUR LIBRARY</p
+            >{/if}
           <h1>
             {activeTab === "scan"
-              ? "Every link, in view."
+              ? "Discover & Preserve"
               : "A new home for your links."}
           </h1>
           <p class="subtitle">
@@ -627,15 +612,6 @@
       </header>
       {#if activeTab === "scan"}
         <section class="scan-control panel" aria-label="Scan folder">
-          <div class="section-label">
-            <span class="step">01</span>
-            <div>
-              <h2>Choose your starting point</h2>
-              <p>
-                Subfolders are included. Linked folders are never traversed.
-              </p>
-            </div>
-          </div>
           <form
             onsubmit={(e) => {
               e.preventDefault();
@@ -699,26 +675,6 @@
           {/each}
         </section>
         <section class="panel results">
-          <div class="results-heading">
-            <div>
-              <h2>
-                Link inventory <span class="count"
-                  >{filtered.length.toLocaleString()}</span
-                >
-              </h2>
-              <p>
-                {scanned
-                  ? displayPath(scanData.src_root)
-                  : "Your discovered connections will appear here."}
-              </p>
-            </div>
-            <button
-              class="ghost"
-              onclick={exportJson}
-              disabled={working || !filtered.length}
-              >↓ &nbsp; Export JSON</button
-            >
-          </div>
           <div class="toolbar">
             <label class="search"
               ><span aria-hidden="true">⌕</span><input
@@ -734,7 +690,12 @@
                   scanQuery = "";
                   healthFilter = "All";
                 }}>Clear filters</button
-              >{/if}
+              >{/if}<button
+              class="ghost export-button"
+              onclick={exportJson}
+              disabled={working || !filtered.length}
+              >↓ &nbsp; Export JSON</button
+            >
           </div>
           <div class="table-wrap" aria-busy={working}>
             <table>
@@ -1187,40 +1148,12 @@
     font-size: 25px;
     line-height: 1;
   }
-  .sidebar-note {
-    margin: auto 12px 26px;
-    padding-top: 60px;
-  }
-  .sidebar-note .connection {
-    display: block;
-    color: var(--accent);
-    font-size: 34px;
-    margin-bottom: 14px;
-  }
-  .sidebar-note strong {
-    font-size: 18px;
-    line-height: 1.5;
-    letter-spacing: -0.3px;
-    font-weight: 500;
-  }
-  .sidebar-note p {
-    color: #748888;
-    font-size: 11px;
-    line-height: 1.8;
-  }
   .platform {
     border-top: 1px solid var(--line);
-    padding: 20px 10px 0;
-    font-size: 9px;
-    letter-spacing: 1px;
-    color: #a0b0ad;
-  }
-  .platform small {
-    display: block;
+    padding: 16px 10px 0;
     font-size: 10px;
-    letter-spacing: 0;
+    letter-spacing: 0.8px;
     color: #718484;
-    margin: 8px 0 0 13px;
   }
   .dot {
     display: inline-block;
@@ -1230,34 +1163,12 @@
     border-radius: 50%;
     flex-shrink: 0;
   }
-  .platform .dot {
-    color: var(--accent);
-    margin-right: 5px;
-  }
   .workspace {
     margin-left: 228px;
     min-width: 0;
   }
-  .topbar {
-    height: 65px;
-    padding: 0 36px;
-    border-bottom: 1px solid var(--line);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    font-size: 11px;
-    color: #9fadaa;
-  }
-  .slash {
-    margin: 0 12px;
-    color: #586965;
-  }
-  .local-tag {
-    font-size: 10px;
-    color: #93aaa2;
-  }
   .content {
-    padding: 30px 36px 70px;
+    padding: 24px 36px 52px;
     max-width: 1600px;
     margin: auto;
   }
@@ -1265,7 +1176,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 28px;
+    margin-bottom: 18px;
   }
   .eyebrow {
     font-size: 9px;
@@ -1284,7 +1195,7 @@
   .subtitle {
     font-size: 12px;
     color: var(--muted);
-    margin: 12px 0 0;
+    margin: 8px 0 0;
     line-height: 1.6;
   }
   .heading-symbol {
@@ -1297,7 +1208,7 @@
     background: #131b1e;
     border: 1px solid var(--line);
     border-radius: 12px;
-    padding: 22px;
+    padding: 16px 20px;
   }
   h2 {
     font-size: 14px;
@@ -1405,13 +1316,13 @@
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 14px;
-    margin: 20px 0;
+    margin: 14px 0;
   }
   .health-card {
     background: #131b1e;
     border: 1px solid var(--line);
     border-radius: 10px;
-    padding: 17px 20px;
+    padding: 13px 18px;
     text-align: left;
     position: relative;
     color: #bacac5;
@@ -1431,7 +1342,7 @@
     font-size: 29px;
     font-weight: 550;
     letter-spacing: -1px;
-    margin: 10px 0 6px;
+    margin: 6px 0 4px;
     color: #edf4f0;
     font-variant-numeric: tabular-nums;
   }
@@ -1454,7 +1365,6 @@
     overflow: hidden;
   }
   .results-heading {
-    padding: 20px 22px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1479,7 +1389,6 @@
     display: flex;
     align-items: center;
     gap: 15px;
-    border-top: 1px solid var(--line);
     border-bottom: 1px solid var(--line);
     padding: 12px 22px;
     background: #11191b;
@@ -1521,10 +1430,13 @@
     padding: 0;
     font-size: 10px;
   }
+  .export-button {
+    margin-left: auto;
+  }
   .table-wrap {
     overflow: auto;
-    max-height: 460px;
-    min-height: 260px;
+    max-height: min(620px, calc(100vh - 524px));
+    min-height: min(260px, calc(100vh - 524px));
   }
   table {
     border-collapse: collapse;
@@ -1976,9 +1888,6 @@
     .content {
       padding: 24px 22px 65px;
     }
-    .topbar {
-      padding-inline: 22px;
-    }
     .search-help {
       display: none;
     }
@@ -2020,7 +1929,6 @@
     }
     .brand-sub,
     .nav-label,
-    .sidebar-note,
     .platform,
     nav small,
     .nav-icon {
@@ -2048,15 +1956,8 @@
     }
     .status-end,
     .heading-symbol,
-    .local-tag {
-      display: none;
-    }
     .content {
       padding: 22px 16px 70px;
-    }
-    .topbar {
-      height: 44px;
-      padding-inline: 16px;
     }
     h1 {
       font-size: 27px;
@@ -2109,9 +2010,6 @@
     }
   }
   @media (min-width: 761px) and (max-height: 800px) {
-    .topbar {
-      height: 46px;
-    }
     .content {
       padding-top: 20px;
     }
@@ -2123,12 +2021,6 @@
     }
     .subtitle {
       margin-top: 8px;
-    }
-    .panel.scan-control {
-      padding: 17px 20px;
-    }
-    .scan-control .section-label {
-      margin-bottom: 14px;
     }
     .health-grid {
       margin: 16px 0;
@@ -2143,15 +2035,8 @@
     .health-card small {
       font-size: 9px;
     }
-    .results-heading {
-      padding-block: 15px;
-    }
     .empty-state {
       padding: 24px 20px;
-    }
-    .table-wrap {
-      max-height: 320px;
-      min-height: 220px;
     }
   }
   @media (prefers-reduced-motion: reduce) {
