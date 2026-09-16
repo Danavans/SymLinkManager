@@ -6,7 +6,7 @@ Scan, inspect, export and recreate symbolic links when moving a library, changin
 
 ## Workspace
 
-- Graphite and mint interface with sidebar navigation, a consistent connection logo and layouts that adapt to smaller windows.
+- Graphite and indigo interface with sidebar navigation, a consistent connection logo and layouts that adapt to smaller windows.
 - **Scan & export**: clickable health summaries, searchable and sortable inventory, 100-row pages, scan duration and skipped-entry count.
 - **Import & recreate**: guided snapshot loading, destination selection and optional target remapping, with an automatically updated preview.
 - Clear replacement confirmations, operation results and details for partial failures. Dialogs support keyboard focus and Escape; status remains visible in the bottom bar.

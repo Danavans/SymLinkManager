@@ -855,10 +855,6 @@
                 Complete both prefixes in each rule, or remove the unfinished
                 rule.
               </p>{/if}
-            <p class="hint">
-              Targets inside the original scan root also follow the new
-              destination.
-            </p>
           </section>
           <section class="panel preview-panel" aria-busy={previewBusy}>
             <div class="results-heading">
@@ -991,13 +987,13 @@
 <style>
   :global(:root) {
     font-family: "Segoe UI", system-ui, sans-serif;
-    color: #e7eeec;
-    background: #0d1214;
+    color: #e7e8f0;
+    background: #101116;
     color-scheme: dark;
     font-synthesis: none;
-    --muted: #8e9e9e;
-    --line: #273234;
-    --accent: #83e3be;
+    --muted: #9699a9;
+    --line: #2d3040;
+    --accent: #91a4ff;
   }
   :global(*) {
     box-sizing: border-box;
@@ -1024,10 +1020,10 @@
   :global(input:focus) {
     outline: none;
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px #83e3be13;
+    box-shadow: 0 0 0 3px #91a4ff1a;
   }
   :global(::selection) {
-    background: #3c7460;
+    background: #4b5794;
     color: white;
   }
   :global(::-webkit-scrollbar) {
@@ -1035,7 +1031,7 @@
     height: 8px;
   }
   :global(::-webkit-scrollbar-thumb) {
-    background: #3a494b;
+    background: #404354;
     border-radius: 8px;
   }
   .app {
@@ -1046,7 +1042,7 @@
     position: fixed;
     inset: 0 auto 0 0;
     padding: 30px 18px 20px;
-    background: #101719;
+    background: #151620;
     border-right: 1px solid var(--line);
     display: flex;
     flex-direction: column;
@@ -1057,7 +1053,7 @@
     align-items: center;
     gap: 12px;
     text-decoration: none;
-    color: #eff8f5;
+    color: #f1f2f8;
     font-size: 23px;
     font-weight: 650;
     letter-spacing: -0.7px;
@@ -1078,7 +1074,7 @@
   .nav-label {
     font-size: 10px;
     letter-spacing: 1.6px;
-    color: #718484;
+    color: #777c91;
     margin: 48px 14px 14px;
   }
   nav {
@@ -1094,13 +1090,13 @@
     border: 1px solid transparent;
     border-radius: 9px;
     background: none;
-    color: #a3b0b0;
+    color: #b0b3c2;
     font-size: 13px;
     font-weight: 600;
   }
   nav button.active {
-    background: #83e3be0d;
-    border-color: #83e3be27;
+    background: #91a4ff0d;
+    border-color: #91a4ff2b;
     color: var(--accent);
   }
   nav small {
@@ -1108,7 +1104,7 @@
     font-size: 10px;
     font-weight: 400;
     margin-top: 5px;
-    color: #7f9590;
+    color: #858a9f;
   }
   .nav-icon {
     font-size: 25px;
@@ -1120,7 +1116,7 @@
     padding: 16px 10px 0;
     font-size: 10px;
     letter-spacing: 0.8px;
-    color: #718484;
+    color: #777c91;
   }
   .dot {
     display: inline-block;
@@ -1168,11 +1164,11 @@
   .heading-symbol {
     font-size: 58px;
     font-weight: 200;
-    color: #3b6356;
+    color: #4b5687;
     margin-right: 12px;
   }
   .panel {
-    background: #131b1e;
+    background: #181923;
     border: 1px solid var(--line);
     border-radius: 12px;
     padding: 16px 20px;
@@ -1197,7 +1193,7 @@
     place-items: center;
     width: 30px;
     height: 30px;
-    border: 1px solid #345247;
+    border: 1px solid #474e7c;
     border-radius: 8px;
     font-size: 11px;
     color: var(--accent);
@@ -1228,7 +1224,7 @@
   .path-input > span {
     position: absolute;
     left: 14px;
-    color: #819a90;
+    color: #969aad;
     font-size: 20px;
   }
   .path-input input {
@@ -1236,9 +1232,9 @@
     width: 100%;
   }
   input {
-    background: #0e1517;
-    color: #d6e2de;
-    border: 1px solid #2e3d3e;
+    background: #11121a;
+    color: #e0e1eb;
+    border: 1px solid #363949;
     border-radius: 7px;
     padding: 11px 13px;
     font-size: 12px;
@@ -1246,7 +1242,7 @@
     transition: border-color 0.15s;
   }
   input::placeholder {
-    color: #677d7a;
+    color: #757a90;
   }
   button {
     border-radius: 7px;
@@ -1259,7 +1255,7 @@
   }
   .accent {
     background: var(--accent);
-    color: #10281f;
+    color: #171a31;
     font-weight: 650;
     display: inline-flex;
     align-items: center;
@@ -1267,17 +1263,17 @@
     gap: 24px;
   }
   .accent:hover:not(:disabled) {
-    background: #a5f0d1;
+    background: #aab8ff;
   }
   .ghost {
-    background: #192326;
-    border-color: #344244;
-    color: #d4dfdb;
+    background: #1c1e2b;
+    border-color: #414456;
+    color: #dcdeea;
     white-space: nowrap;
   }
   .ghost:hover:not(:disabled) {
-    background: #263431;
-    border-color: #557266;
+    background: #292d40;
+    border-color: #606994;
   }
   .health-grid {
     display: grid;
@@ -1286,17 +1282,17 @@
     margin: 14px 0;
   }
   .health-card {
-    background: #131b1e;
+    background: #181923;
     border: 1px solid var(--line);
     border-radius: 10px;
     padding: 13px 18px;
     text-align: left;
     position: relative;
-    color: #bacac5;
+    color: #c8cad7;
   }
   .health-card.selected {
-    border-color: #668d7c;
-    background: #182521;
+    border-color: #6b75ad;
+    background: #202237;
   }
   .health-label {
     font-size: 11px;
@@ -1310,7 +1306,7 @@
     font-weight: 550;
     letter-spacing: -1px;
     margin: 6px 0 0;
-    color: #edf4f0;
+    color: #f0f1f8;
     font-variant-numeric: tabular-nums;
   }
   .healthy {
@@ -1341,8 +1337,8 @@
   }
   .count {
     font-size: 10px;
-    background: #263833;
-    color: #a6c5b8;
+    background: #292d47;
+    color: #bec4de;
     padding: 3px 7px;
     border-radius: 5px;
     margin-left: 8px;
@@ -1354,7 +1350,7 @@
     gap: 15px;
     border-bottom: 1px solid var(--line);
     padding: 12px 22px;
-    background: #11191b;
+    background: #151620;
   }
   .search {
     display: flex;
@@ -1364,7 +1360,7 @@
   }
   .search > span {
     font-size: 22px;
-    color: #728c83;
+    color: #7d839d;
   }
   .search input {
     background: transparent;
@@ -1381,7 +1377,7 @@
   }
   .search-help {
     font-size: 10px;
-    color: #768c85;
+    color: #81869f;
     white-space: nowrap;
   }
   .search-help > span {
@@ -1409,7 +1405,7 @@
   th {
     position: sticky;
     top: 0;
-    background: #182124;
+    background: #20212d;
     z-index: 1;
     text-align: left;
   }
@@ -1426,7 +1422,7 @@
   }
   .sort {
     background: none;
-    color: #8ba099;
+    color: #9599ac;
     padding: 12px 22px;
     display: flex;
     align-items: center;
@@ -1438,7 +1434,7 @@
     white-space: nowrap;
   }
   .sort span {
-    color: #627e70;
+    color: #686f8d;
   }
   th:last-child .sort {
     justify-content: flex-end;
@@ -1446,22 +1442,22 @@
   td {
     font-family: Consolas, "Cascadia Code", monospace;
     font-size: 11px;
-    color: #c3d1cc;
+    color: #d0d2df;
     padding: 13px 22px;
-    border-bottom: 1px solid #223032;
+    border-bottom: 1px solid #292d3c;
     overflow-wrap: anywhere;
     vertical-align: top;
     line-height: 1.7;
   }
   tr:hover td {
-    background: #1a2727;
+    background: #242738;
   }
   .target-cell {
-    color: #80988e;
+    color: #8d92a8;
   }
   .link-glyph {
     margin-right: 9px;
-    color: #789f8b;
+    color: #8189aa;
   }
   .badge {
     font:
@@ -1472,9 +1468,9 @@
     gap: 6px;
     padding: 5px 7px;
     border-radius: 5px;
-    background: #7c9e8d0b;
+    background: #7983ac0b;
     white-space: nowrap;
-    border: 1px solid #7c9e8d20;
+    border: 1px solid #7983ac20;
   }
   td:last-child {
     text-align: right;
@@ -1487,8 +1483,8 @@
     font-size: 30px;
     color: var(--accent);
     margin: 0 auto 18px;
-    background: #83e3be08;
-    border: 1px solid #83e3be20;
+    background: #91a4ff08;
+    border: 1px solid #91a4ff20;
     border-radius: 14px;
     width: 55px;
     height: 55px;
@@ -1502,7 +1498,7 @@
   }
   .empty-state p {
     font-size: 11px;
-    color: #81988e;
+    color: #8c91a6;
     margin: 0;
   }
   .empty-flow {
@@ -1510,11 +1506,11 @@
     gap: 15px;
     font-size: 8px;
     letter-spacing: 1.7px;
-    color: #708a7d;
+    color: #787f99;
     margin-top: 26px;
   }
   .empty-flow > span {
-    color: #416e59;
+    color: #525d91;
   }
   .table-footer {
     display: flex;
@@ -1522,7 +1518,7 @@
     justify-content: space-between;
     padding: 11px 22px;
     font-size: 10px;
-    color: #83988f;
+    color: #8e93a9;
     border-top: 1px solid var(--line);
   }
   .pagination {
@@ -1531,9 +1527,9 @@
     align-items: center;
   }
   .pagination button {
-    background: #1b2927;
-    color: #c3d4cb;
-    border-color: #2d4138;
+    background: #242738;
+    color: #d1d3e1;
+    border-color: #393d51;
     padding: 4px 10px;
   }
   .statusbar {
@@ -1547,9 +1543,9 @@
     gap: 9px;
     padding: 9px 25px;
     border-top: 1px solid var(--line);
-    background: #101819;
+    background: #151620;
     font-size: 10px;
-    color: #8b9e95;
+    color: #9599aa;
     z-index: 3;
   }
   .statusbar > .dot {
@@ -1563,7 +1559,7 @@
     font-size: 8px;
     letter-spacing: 1.3px;
     white-space: nowrap;
-    color: #627e70;
+    color: #686f8d;
   }
   .pulse {
     animation: pulse 1s infinite alternate;
@@ -1586,15 +1582,15 @@
     margin-bottom: 18px;
   }
   .upload-zone {
-    background: #101c1b;
-    border: 1px dashed #47685a;
+    background: #171825;
+    border: 1px dashed #515b8c;
     display: flex;
     align-items: center;
     flex-direction: column;
     gap: 5px;
     width: 100%;
     padding: 12px;
-    color: #c8ded2;
+    color: #d8dae7;
   }
   .upload-icon {
     font-size: 18px;
@@ -1606,7 +1602,7 @@
   }
   .upload-zone > span:last-child {
     font-size: 10px;
-    color: #7d9c8b;
+    color: #878da7;
   }
   .import-grid .section-label {
     margin-bottom: 14px;
@@ -1614,12 +1610,12 @@
   .import-grid label {
     display: block;
     font-size: 11px;
-    color: #aec1b6;
+    color: #bec2d4;
     margin: 14px 0 8px;
   }
   .hint {
     font-size: 10px;
-    color: #839b8e;
+    color: #8e94aa;
     margin: 15px 0 0;
   }
   .import-grid .hint {
@@ -1638,7 +1634,7 @@
   .optional {
     font-size: 8px;
     letter-spacing: 1px;
-    color: #819a8c;
+    color: #8b91a8;
     margin-left: 8px;
   }
   .mapping-labels {
@@ -1648,7 +1644,7 @@
     padding-right: 40px;
     font-size: 8px;
     letter-spacing: 1px;
-    color: #749383;
+    color: #7f86a0;
     margin-bottom: 9px;
   }
   .mapping-row {
@@ -1665,7 +1661,7 @@
   .remove {
     padding: 2px;
     background: transparent;
-    color: #a6b9ae;
+    color: #b5b9cd;
     font-size: 22px;
   }
   .remove:hover {
@@ -1691,7 +1687,7 @@
     overflow: auto;
   }
   .preview-grid .eyebrow {
-    color: #859f91;
+    color: #9095aa;
     font-size: 8px;
   }
   .root-link {
@@ -1700,10 +1696,10 @@
     gap: 8px;
     width: 100%;
     padding: 10px 0;
-    border-bottom: 1px solid #24372c;
+    border-bottom: 1px solid #303449;
     border-radius: 0;
     background: none;
-    color: #bfd2c5;
+    color: #ced1e0;
     text-align: left;
     font-size: 11px;
     overflow-wrap: anywhere;
@@ -1715,7 +1711,7 @@
     display: grid;
     gap: 5px;
     padding: 10px 0;
-    border-bottom: 1px solid #24372c;
+    border-bottom: 1px solid #303449;
     font:
       10px Consolas,
       monospace;
@@ -1729,7 +1725,7 @@
     text-align: center;
     border-top: 1px solid var(--line);
     font-size: 12px;
-    color: #7d9888;
+    color: #878da5;
   }
   .preview-warning {
     margin: 0;
@@ -1754,7 +1750,7 @@
   .recreate-bar p span {
     display: block;
     font-size: 10px;
-    color: #89a091;
+    color: #9398aa;
     margin-top: 5px;
   }
   .failures {
@@ -1773,9 +1769,9 @@
     clip: rect(0, 0, 0, 0);
   }
   dialog {
-    background: #182320;
-    color: #e2eee7;
-    border: 1px solid #466150;
+    background: #1f2130;
+    color: #e7e8f1;
+    border: 1px solid #535b84;
     border-radius: 16px;
     padding: 28px;
     width: min(520px, 90vw);
@@ -1784,7 +1780,7 @@
     box-shadow: 0 30px 100px #0009;
   }
   dialog::backdrop {
-    background: #040b09bf;
+    background: #080912bf;
     backdrop-filter: blur(4px);
   }
   dialog h2 {
@@ -1793,7 +1789,7 @@
   }
   dialog p {
     font-size: 12px;
-    color: #a3b7aa;
+    color: #b2b6c8;
   }
   .dialog-icon {
     font-size: 28px;
@@ -1805,7 +1801,7 @@
     font:
       11px Consolas,
       monospace;
-    background: #101a15;
+    background: #151722;
     border-radius: 7px;
     margin: 16px 0;
     padding: 12px;
@@ -1830,7 +1826,7 @@
     grid-template-columns: 1fr 1fr;
     gap: 15px;
     padding: 20px;
-    background: #101a15;
+    background: #151722;
     border-radius: 9px;
   }
   .result-summary strong {
@@ -1840,7 +1836,7 @@
   }
   .result-summary span {
     font-size: 11px;
-    color: #a3b7aa;
+    color: #b2b6c8;
   }
   @media (min-width: 1500px) {
     .content {

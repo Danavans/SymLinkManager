@@ -4,7 +4,7 @@ Read `PROJECT_CONTEXT.md` first for the current product, architecture, UX and JS
 
 ## Current application
 
-Symlink Manager 1.1.0 is a portable Tauri + Svelte application for Windows and Linux. Its current identity uses graphite surfaces, mint accents, rose for broken links and amber for unreadable links. The workspace has sidebar navigation, a paginated scan inventory and a guided import/recreation flow. These describe the current design; future user-requested design changes may replace them.
+Symlink Manager 1.1.0 is a portable Tauri + Svelte application for Windows and Linux. Its current identity uses graphite surfaces, indigo accents, green for healthy links, rose for broken links and amber for unreadable links. The workspace has sidebar navigation, a paginated scan inventory and a guided import/recreation flow. These describe the current design; future user-requested design changes may replace them.
 
 ## Working rules
 
