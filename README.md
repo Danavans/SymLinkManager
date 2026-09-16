@@ -1,117 +1,93 @@
 # Symlink Manager
 
-Symlink Manager is a portable desktop app for backing up and recreating symbolic links.
+**Version 1.1.0** · Portable desktop application for Windows and Linux
 
-It is useful when you move a media library, migrate between drives, rebuild a machine, or need to recreate a group of links on another Windows or Linux setup. The app scans a folder, finds symlinks, exports them to JSON, then recreates them later with optional root remapping.
+Scan, inspect, export and recreate symbolic links when moving a library, changing drives or rebuilding a machine. Symlink Manager preserves connections and folder structure; it does not copy the real target files.
 
-## What It Does
+## Workspace
 
-- Scans a folder tree and finds symbolic links.
-- Shows whether each target is OK, Broken, or Unreadable.
-- Exports the scan result to a JSON file.
-- Imports a previous JSON export.
-- Recreates symlinks in another destination folder.
-- Remaps target roots, for example from a Windows drive to a Linux mount path.
-- Warns before replacing existing items.
-- Requests admin elevation on Windows when symlink creation needs it.
+- Graphite and mint interface with sidebar navigation, a consistent connection logo and layouts that adapt to smaller windows.
+- **Scan & export**: clickable health summaries, searchable and sortable inventory, 100-row pages, scan duration and skipped-entry count.
+- **Import & recreate**: guided snapshot loading, destination selection and optional target remapping, with an automatically updated preview.
+- Clear replacement confirmations, operation results and details for partial failures. Dialogs support keyboard focus and Escape; status remains visible in the bottom bar.
+- Local processing and system fonts, with no remote font downloads.
 
-## Portable App
+## Scan and export
 
-Symlink Manager is meant to be used as a portable app.
+1. Open **Scan & export**, choose a folder and click **Scan symlinks**.
+2. Review the health summaries and inventory. Subfolders are scanned; discovered linked folders are not traversed.
+3. Optionally select a health filter and search paths, targets or status.
+4. Click **Export JSON** to save every matching entry across all pages.
 
-Download the release file for your operating system, place it wherever you want, and launch it directly. No project setup is required to use the app.
+Search is case-insensitive. Separate alternatives with commas (OR), and prefix exclusions with `-`, for example `arcane, -1080p`. To export the entire scan, clear the search and select **Total links**. Pagination does not limit the export.
 
-## Supported Platforms
+| Status | Meaning |
+| --- | --- |
+| OK / Healthy | The target is accessible. |
+| Broken | The target was not found. |
+| Unreadable | The link could not be read, or its target could not be verified. This does not establish that the target exists. |
+| Skipped | A traversal error prevented reading part of the scanned tree. This is a separate counter. |
 
-- Windows: tested and supported.
-- Linux: tested and supported.
-- macOS: not tested.
+The scan runs in the background with up to eight workers and reuses target metadata for status and type. The interface renders at most 100 result rows at a time. A local benchmark of 3,000 NTFS junctions measured approximately **2.4× faster scanning**; network and cold-disk performance can differ. Methodology and limitations are in [AUDIT.md](AUDIT.md).
 
-On Windows, creating symlinks may require Developer Mode or administrator rights. If Windows blocks symlink creation, the app can ask for elevation.
+## Import and recreate
 
-On Linux, the app needs normal write permissions in the destination folder. If the Linux file does not start by double-clicking, open its file properties and allow it to run as a program.
+1. Open **Import & recreate** and choose a JSON export.
+2. Set the destination folder where the new links will be created.
+3. Add target-prefix rules if locations changed. Both fields of each rule must be completed, or the unfinished rule removed.
+4. Review the automatic preview. Click a detected root to prefill a mapping rule; the preview shows one example per root.
+5. Click **Recreate links**, confirm any replacements and review the result.
 
-## How To Use
-
-### Scan And Export
-
-1. Open the app.
-2. Go to Scan & Export.
-3. Choose the folder you want to scan.
-4. Click Scan symlinks.
-5. Review the results.
-6. Use the search field if you only want to export part of the scan.
-7. Click Export JSON and save the file.
-
-The JSON export is your symlink backup. Keep it somewhere safe if you plan to rebuild or move a library later.
-
-### Import And Recreate
-
-1. Go to Import & Recreate.
-2. Load a JSON export.
-3. Choose the target root where the links should be created.
-4. Add root remap rules if paths changed.
-5. Check the preview.
-6. Click Recreate.
-7. Confirm if the app warns that existing items will be replaced.
-
-The app must run on the operating system where you want to create the links. Use the Windows version to create Windows symlinks, and the Linux version to create Linux symlinks.
-
-## Root Remap Rules
-
-Root remap rules replace the beginning of target paths before links are recreated.
-
-Example:
+The original relative folder structure is preserved. Root mappings change target paths, not link locations. The first matching rule wins, and matching respects path-component boundaries. Windows matching ignores case and accepts either slash style.
 
 ```text
+W:\Shows -> E:\Media\Shows
 W:\Shows -> /mnt/media/shows
-D:\Media -> /mnt/media
 ```
 
-The first matching rule wins. If no rule matches, the original target path is used.
+After explicit rules, targets inside the original scan root are also relocated to the new destination. Other unmatched targets remain unchanged. Recreate links on the operating system where they will be used, with mappings appropriate to that system.
 
-## Search Filter
+### Replacement and validation
 
-The scan results can be filtered before export.
+Imported paths are checked for traversal, absolute link paths, duplicates and platform-specific unsafe names. Destinations beneath linked ancestors are refused. Before replacing an existing item, the app temporarily preserves it and restores it if link creation fails. Non-empty real directories are never replaced. Entries whose original target could not be read are reported as failures rather than recreated with a placeholder target.
 
-- Use multiple terms separated by commas.
-- Prefix a term with `-` to exclude it.
-- If the search field is empty, the full scan is exported.
+These safeguards cover normal failures; they are not a crash-recovery journal or a guarantee against concurrent external filesystem changes. Review the preview and replacement warning before modifying an important folder.
 
-Example:
+## Platforms and portability
 
-```text
-arcane, -1080p
+- **Windows**: the current refactor has been compiled and tested at the code level. Symlink creation may require Developer Mode or administrator privileges; error 1314 triggers the UAC recreation flow.
+- **Linux**: supported by the implementation; native validation of this refactor is still pending. Write permissions and executable permissions are required. Tauri's platform runtime prerequisites still apply.
+- **macOS**: not tested.
+
+The latest checks include browser UI fixtures and real NTFS junction scans. Full native UAC and Linux validation remain follow-up work. Elevated jobs are polled for up to 60 seconds; after a timeout, the worker may still be running, so check the destination before retrying.
+
+Release executables are intended to run without project setup or an installer. The Windows build uses WebView2. Suggested release filenames:
+
+- `Symlink-Manager-v1.1.0-Windows-x64.exe`
+- `Symlink-Manager-v1.1.0-Linux-x64`
+- `Symlink-Manager-v1.1.0-Linux-x64.tar.gz` if distributing a Linux archive.
+
+These names are packaging guidance, not a claim that all platform releases have been built or published.
+
+## Development and verification
+
+Use Node.js/npm, Rust and the Tauri prerequisites for your platform.
+
+```sh
+npm ci
+npm run tauri dev
+npm run check
+npm run build
+cargo test --manifest-path src-tauri/Cargo.toml --lib
+cargo clippy --manifest-path src-tauri/Cargo.toml --lib -- -D warnings
+npm run tauri build
 ```
 
-## Status Meanings
+The portable Windows output is `src-tauri/target/release/symlinkmanager.exe`; installers are disabled in the Tauri configuration. Version changes take effect in the executable after rebuilding.
 
-- OK: the symlink target exists.
-- Broken: the symlink target is missing.
-- Unreadable: the target exists, but the app cannot access it.
-- Skipped: some folders or files could not be read during the scan.
+Optional checks:
 
-## Release Files
+- `./tests/benchmark.ps1` in PowerShell 7 on Windows creates and removes a disposable 3,000-junction fixture.
+- `node node_modules/vite/bin/vite.js --mode test --port 1422` starts a UI-only fixture with synthetic data and no filesystem operations. It is excluded from production builds.
 
-For a normal release, upload one Windows build and one Linux build.
-
-Recommended names:
-
-- `Symlink-Manager-v1.0.0-Windows-x64.exe`
-- `Symlink-Manager-v1.0.0-Linux-x64`
-
-If you package the Linux build as an archive, use a clear name such as:
-
-- `Symlink-Manager-v1.0.0-Linux-x64.tar.gz`
-
-## Notes
-
-Symlink Manager only manages symbolic links. It does not copy the real target files.
-
-Before recreating links into an important folder, check the preview and replacement warning carefully.
-
-## Redesigned workspace and verification
-
-The workspace now includes clickable health filters, 100-row pages, a guided import flow and one consistent connection logo. Export includes all matching rows across pages. Incomplete remap rules must be completed or removed before recreation. Existing items are preserved until replacement succeeds; non-empty directories and destinations beneath linked ancestors are refused.
-
-Scans use bounded background workers. See [AUDIT.md](AUDIT.md) for measured results, reproducible tests and known limitations. UI-only fixture: `node node_modules/vite/bin/vite.js --mode test --port 1422`. This mode uses synthetic data and does not modify files.
+See [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) for architecture and compatibility details, [AGENTS.md](AGENTS.md) for contributor instructions, and [AUDIT.md](AUDIT.md) for the detailed audit and remaining priorities.

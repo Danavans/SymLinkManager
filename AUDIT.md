@@ -2,6 +2,8 @@
 
 Date : 17 septembre 2026.
 
+Périmètre : refonte et optimisations de **Symlink Manager 1.1.0**. Les mesures ci-dessous documentent les vérifications de la refonte ; la mise à jour documentaire et des métadonnées de version ne constitue pas une nouvelle compilation ni une validation native supplémentaire.
+
 ## Livré
 
 Interface entièrement réorganisée autour d'un espace de travail graphite/menthe : navigation latérale, inventaire, indicateurs de santé cliquables, recherche documentée, pagination de 100 lignes, états vides, durée du scan et journal d'état lisible. L'import suit trois étapes : snapshot, destination, règles de remappage ; l'aperçu reste automatique. Les dialogues natifs HTML gèrent le focus et Échap. Petites fenêtres et réduction des animations sont prises en charge. Tous les textes de l'application restent en anglais.

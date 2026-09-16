@@ -1,13 +1,22 @@
-# Agent Instructions (SymLinkManager)
+# Agent Instructions (Symlink Manager)
 
-Read `PROJECT_CONTEXT.md` first for product context, UX decisions, and JSON formats.
+Read `PROJECT_CONTEXT.md` first for the current product, architecture, UX and JSON format. If it conflicts with this file, follow `AGENTS.md`.
 
-Operational rules:
-- If `AGENTS.md` conflicts with `PROJECT_CONTEXT.md`, follow `AGENTS.md`.
-- Preserve PlexTools dark UI style (no light panels or light background).
-- Keep UI text in English.
-- Prefer editing these files when changing core behavior: `src/routes/+page.svelte`, `src-tauri/src/lib.rs`, `src-tauri/src/main.rs`, `src-tauri/tauri.conf.json`.
-- Follow existing patterns for root remap rules and Windows elevation flow.
-- Avoid introducing new build steps; keep the app portable.
-- Keep behavior parity across Windows/Linux unless a platform requires a specific flow.
-- After each code change, propose a Conventional Commits message.
+## Current application
+
+Symlink Manager 1.1.0 is a portable Tauri + Svelte application for Windows and Linux. Its current identity uses graphite surfaces, mint accents, rose for broken links and amber for unreadable links. The workspace has sidebar navigation, a paginated scan inventory and a guided import/recreation flow. These describe the current design; future user-requested design changes may replace them.
+
+## Working rules
+
+- Keep UI text in English and maintain accessible controls, focus handling and responsive layouts.
+- Keep branding consistent across `assets/icon.svg`, `static/logo.svg`, the favicon and Tauri application/window icons when changing the identity.
+- For UI work, start with `src/routes/+page.svelte`; for filesystem behavior, start with `src-tauri/src/lib.rs`. `src-tauri/src/main.rs` handles the elevated-worker entry point, and `src-tauri/tauri.conf.json` contains application settings.
+- Preserve JSON compatibility, first-match root mapping, internal-target relocation, search exclusions and filtered export across all pages unless the requested change explicitly revises those behaviors.
+- Preserve import validation, destination ancestor checks, replacement rollback and the Windows elevation flow. Never remove these safeguards as a simplification.
+- Keep expensive scan/recreation/conflict checks off the UI thread and retain bounded scan concurrency.
+- Keep the app portable, with no unnecessary dependencies, runtime services or additional build stages.
+- Maintain Windows/Linux behavior parity where possible; document platform-specific flows and distinguish tested behavior from intended support.
+- Run checks appropriate to the changes. Documentation/version-only updates need consistency checks, not a full UI rebuild or filesystem benchmark.
+- Keep `README.md` user-facing, `PROJECT_CONTEXT.md` accurate for future agents and `AUDIT.md` as the detailed findings/measurement record.
+- When changing the app version, synchronize `package.json`, the root entries in `package-lock.json`, `src-tauri/Cargo.toml`, the application entry in `src-tauri/Cargo.lock` and `src-tauri/tauri.conf.json`. Update release references without changing dependency versions.
+- After code or metadata changes, propose a Conventional Commits message.
