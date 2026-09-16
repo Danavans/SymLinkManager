@@ -1114,6 +1114,7 @@
     margin-top: auto;
     border-top: 1px solid var(--line);
     padding: 16px 10px 0;
+    text-align: center;
     font-size: 10px;
     letter-spacing: 0.8px;
     color: #777c91;
