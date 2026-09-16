@@ -233,6 +233,60 @@
       .filter((item) => item.from && item.to);
   }
 
+  /** @param {string} value */
+  function normalizedPath(value) {
+    let path = value.replaceAll("\\", "/").replace(/\/{2,}/g, "/");
+    if (path.length > 1) path = path.replace(/\/+$/, "");
+    return osSep === "\\" ? path.toLowerCase() : path;
+  }
+
+  /** @param {string} target @param {string} from @param {string} to */
+  function replacePreviewRoot(target, from, to) {
+    const source = normalizedPath(from);
+    const value = normalizedPath(target);
+    if (!source || !to.trim()) return target;
+    if (value === source) return to;
+    if (!value.startsWith(source + "/")) return target;
+    const suffix = target.replaceAll("\\", "/").split("/").slice(source.split("/").length).join(osSep);
+    return `${to.replace(/[\\/]$/, "")}${osSep}${suffix}`;
+  }
+
+  /** @param {string} target */
+  function previewTarget(target) {
+    let mapped = target;
+    for (const rule of cleanMappings()) {
+      const next = replacePreviewRoot(mapped, rule.from, rule.to);
+      if (next !== mapped) {
+        mapped = next;
+        break;
+      }
+    }
+    return replacePreviewRoot(mapped, importData?.src_root || "", dstRoot);
+  }
+
+  function localPreview() {
+    const data = importData;
+    if (!data || !dstRoot.trim() || !preview.root_samples.length) return preview;
+    return {
+      roots: preview.roots,
+      sample: [],
+      root_samples: preview.root_samples.map((item) => {
+        const root = normalizedPath(item.root);
+        const entry = data.entries.find((candidate) => {
+          const target = normalizedPath(candidate.target);
+          return target === root || target.startsWith(root + "/");
+        });
+        if (!entry) return item;
+        const relative = entry.relative.replaceAll("\\", osSep).replaceAll("/", osSep);
+        return {
+          root: item.root,
+          link: `${dstRoot.replace(/[\\/]$/, "")}${osSep}${relative}`,
+          target: previewTarget(entry.target),
+        };
+      }),
+    };
+  }
+
   function addMapping() {
     mappings = [...mappings, { from: "", to: "" }];
   }
@@ -336,6 +390,7 @@
       const result = await invoke("load_export", { path: selected });
       importData = result;
       importName = selected.split(/[\\/]/).pop() || selected;
+      preview = { roots: [], sample: [], root_samples: [] };
       lastFailures = [];
       setStatus(`Loaded ${result.entries.length} entries.`);
     } catch (err) {
@@ -347,7 +402,6 @@
 
   function scheduleAutoPreview() {
     previewSeq++;
-    preview = { roots: [], sample: [], root_samples: [] };
     previewError = "";
     previewBusy = false;
     if (previewTimer) {
@@ -356,6 +410,7 @@
     }
     if (activeTab !== "import") return;
     if (!importData || !dstRoot) return;
+    preview = localPreview();
     previewBusy = true;
     previewTimer = setTimeout(() => {
       previewRecreate(true);
@@ -592,9 +647,6 @@
     <div class="content">
       <header class="page-heading">
         <div>
-          {#if activeTab === "import"}<p class="eyebrow"
-              >RECONNECT YOUR LIBRARY</p
-            >{/if}
           <h1>
             {activeTab === "scan"
               ? "Discover & Preserve"
@@ -805,9 +857,7 @@
                       " links ready to reconnect · Click to change"
                     : "Browse your files to get started"}</span
                 ></button
-              >{#if importData}<p class="source-note">
-                  Original root <span>{displayPath(importData.src_root)}</span>
-                </p>{/if}
+              >
             </section>
             <section class="panel">
               <div class="section-label">
@@ -887,16 +937,11 @@
                     : "Preview updates automatically as you edit."}
                 </p>
               </div>
-              <button
-                class="ghost"
-                onclick={() => previewRecreate()}
-                disabled={!importData || !dstRoot.trim()}
-                >Refresh preview</button
-              >
             </div>
-            {#if previewError}<p class="warning" role="alert">
+            {#if previewError}<p class="warning preview-warning" role="alert">
                 {previewError}
-              </p>{:else if preview.roots.length}<div class="preview-grid">
+              </p>{/if}
+            {#if preview.roots.length}<div class="preview-grid">
                 <div>
                   <p class="eyebrow">DETECTED ROOTS · CLICK TO MAP</p>
                   {#each preview.roots as item}<button
@@ -1617,13 +1662,13 @@
     display: flex;
     align-items: center;
     flex-direction: column;
-    gap: 9px;
+    gap: 5px;
     width: 100%;
-    padding: 20px;
+    padding: 12px;
     color: #c8ded2;
   }
   .upload-icon {
-    font-size: 22px;
+    font-size: 18px;
     color: var(--accent);
   }
   .upload-zone strong {
@@ -1634,26 +1679,22 @@
     font-size: 10px;
     color: #7d9c8b;
   }
-  .source-note {
-    font-size: 10px;
-    color: #7d978b;
-    margin: 13px 0 0;
-  }
-  .source-note span {
-    display: block;
-    color: #b9cbbf;
-    overflow-wrap: anywhere;
+  .import-grid .section-label {
+    margin-bottom: 14px;
   }
   .import-grid label {
     display: block;
     font-size: 11px;
     color: #aec1b6;
-    margin: 20px 0 10px;
+    margin: 14px 0 8px;
   }
   .hint {
     font-size: 10px;
     color: #839b8e;
     margin: 15px 0 0;
+  }
+  .import-grid .hint {
+    margin-top: 10px;
   }
   .mapping-panel {
     margin-bottom: 18px;
@@ -1754,6 +1795,11 @@
     border-top: 1px solid var(--line);
     font-size: 12px;
     color: #7d9888;
+  }
+  .preview-warning {
+    margin: 0;
+    padding: 10px 22px 0;
+    font-size: 10px;
   }
   .recreate-bar {
     display: flex;

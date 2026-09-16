@@ -16,6 +16,8 @@
         "width": 1380,
         "height": 745,
         "center": true,
+        "visible": false,
+        "backgroundColor": "#101819",
         "minWidth": 680,
         "minHeight": 600
       }
