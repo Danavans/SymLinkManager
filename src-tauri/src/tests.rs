@@ -10,6 +10,20 @@ fn data(relative: &str) -> ExportData {
         }],
     }
 }
+
+#[test]
+fn saved_window_needs_a_visible_work_area() {
+    let state = SavedWindowState {
+        width: 1000,
+        height: 800,
+        x: 1840,
+        y: 100,
+        maximized: false,
+    };
+    assert!(overlaps_work_area(state, 0, 0, 1920, 1040));
+    assert!(!overlaps_work_area(state, -1920, 0, 1920, 1040));
+}
+
 #[test]
 fn import_boundaries_and_remapping() {
     for path in [

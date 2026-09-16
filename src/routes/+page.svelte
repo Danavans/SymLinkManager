@@ -662,14 +662,6 @@
                   : health[
                       /** @type {'OK'|'Broken'|'Unreadable'} */ (kind)
                     ].toLocaleString()}</strong
-              ><small
-                >{kind === "All"
-                  ? "Your connection inventory"
-                  : kind === "OK"
-                    ? "Targets are accessible"
-                    : kind === "Broken"
-                      ? "Targets not found"
-                      : "Could not verify target"}</small
               ></button
             >
           {/each}
@@ -1149,6 +1141,7 @@
     line-height: 1;
   }
   .platform {
+    margin-top: auto;
     border-top: 1px solid var(--line);
     padding: 16px 10px 0;
     font-size: 10px;
@@ -1342,13 +1335,9 @@
     font-size: 29px;
     font-weight: 550;
     letter-spacing: -1px;
-    margin: 6px 0 4px;
+    margin: 6px 0 0;
     color: #edf4f0;
     font-variant-numeric: tabular-nums;
-  }
-  .health-card small {
-    font-size: 10px;
-    color: #7f9390;
   }
   .healthy {
     color: #83e3be;
@@ -1435,8 +1424,8 @@
   }
   .table-wrap {
     overflow: auto;
-    max-height: min(620px, calc(100vh - 524px));
-    min-height: min(260px, calc(100vh - 524px));
+    max-height: min(620px, calc(100vh - 500px));
+    min-height: min(260px, calc(100vh - 500px));
   }
   table {
     border-collapse: collapse;
@@ -1451,14 +1440,15 @@
     text-align: left;
   }
   th:first-child {
-    width: 40%;
+    width: 46%;
   }
   th:nth-child(2) {
-    width: 44%;
+    width: 46%;
   }
   th:last-child {
-    width: 16%;
-    min-width: 112px;
+    width: 8%;
+    min-width: 84px;
+    text-align: right;
   }
   .sort {
     background: none;
@@ -1475,6 +1465,9 @@
   }
   .sort span {
     color: #627e70;
+  }
+  th:last-child .sort {
+    justify-content: flex-end;
   }
   td {
     font-family: Consolas, "Cascadia Code", monospace;
@@ -1508,6 +1501,9 @@
     background: #7c9e8d0b;
     white-space: nowrap;
     border: 1px solid #7c9e8d20;
+  }
+  td:last-child {
+    text-align: right;
   }
   .empty-state {
     text-align: center;
@@ -1869,10 +1865,6 @@
     .content {
       padding-top: 40px;
     }
-    .table-wrap {
-      max-height: calc(100vh - 510px);
-      min-height: 300px;
-    }
   }
   @media (max-width: 1100px) {
     .sidebar {
@@ -1894,17 +1886,14 @@
     .health-card {
       padding: 15px;
     }
-    .health-card small {
-      font-size: 9px;
-    }
     th:first-child {
-      width: 37%;
+      width: 44%;
     }
     th:nth-child(2) {
-      width: 43%;
+      width: 44%;
     }
     th:last-child {
-      width: 20%;
+      width: 12%;
     }
     .sort,
     td {
@@ -2031,9 +2020,6 @@
     .health-card strong {
       font-size: 26px;
       margin: 5px 0;
-    }
-    .health-card small {
-      font-size: 9px;
     }
     .empty-state {
       padding: 24px 20px;

@@ -7,7 +7,7 @@ use std::io::ErrorKind;
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::{image::Image, Manager};
+use tauri::{image::Image, Manager, WebviewWindow, WindowEvent};
 use walkdir::WalkDir;
 #[cfg(windows)]
 use windows_sys::Win32::UI::Shell::ShellExecuteW;
@@ -98,6 +98,110 @@ struct AdminResult {
     sample_links: Vec<String>,
     #[serde(default)]
     errors: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+struct SavedWindowState {
+    width: u32,
+    height: u32,
+    x: i32,
+    y: i32,
+    maximized: bool,
+}
+
+fn window_state_path(window: &WebviewWindow) -> Option<PathBuf> {
+    window
+        .app_handle()
+        .path()
+        .app_local_data_dir()
+        .ok()
+        .map(|dir| dir.join("window-state.json"))
+}
+
+fn read_window_state(path: &Path) -> Option<SavedWindowState> {
+    serde_json::from_str(&fs::read_to_string(path).ok()?).ok()
+}
+
+fn overlaps_work_area(state: SavedWindowState, x: i32, y: i32, width: u32, height: u32) -> bool {
+    let left = i64::from(state.x).max(i64::from(x));
+    let top = i64::from(state.y).max(i64::from(y));
+    let right = (i64::from(state.x) + i64::from(state.width)).min(i64::from(x) + i64::from(width));
+    let bottom =
+        (i64::from(state.y) + i64::from(state.height)).min(i64::from(y) + i64::from(height));
+    right - left >= 80 && bottom - top >= 80
+}
+
+fn saved_window_is_visible(window: &WebviewWindow, state: SavedWindowState) -> bool {
+    window.available_monitors().is_ok_and(|monitors| {
+        monitors.into_iter().any(|monitor| {
+            let area = monitor.work_area();
+            overlaps_work_area(
+                state,
+                area.position.x,
+                area.position.y,
+                area.size.width,
+                area.size.height,
+            )
+        })
+    })
+}
+
+fn persist_window_state(window: &WebviewWindow, path: &Path) {
+    let maximized = window.is_maximized().unwrap_or(false);
+    let state = if maximized {
+        read_window_state(path).map(|state| SavedWindowState { maximized, ..state })
+    } else {
+        let (Ok(size), Ok(position)) = (window.outer_size(), window.outer_position()) else {
+            return;
+        };
+        Some(SavedWindowState {
+            width: size.width,
+            height: size.height,
+            x: position.x,
+            y: position.y,
+            maximized,
+        })
+    };
+    if let (Some(state), Some(parent)) = (state, path.parent()) {
+        let _ = fs::create_dir_all(parent);
+        let _ = fs::write(path, serde_json::to_vec(&state).unwrap_or_default());
+    }
+}
+
+fn restore_window_state(window: &WebviewWindow) {
+    let Some(path) = window_state_path(window) else {
+        return;
+    };
+    let saved = read_window_state(&path);
+    if let Some(state) = saved.filter(|state| saved_window_is_visible(window, *state)) {
+        let _ = window.set_size(tauri::PhysicalSize::new(state.width, state.height));
+        let _ = window.set_position(tauri::PhysicalPosition::new(state.x, state.y));
+        if state.maximized {
+            let _ = window.maximize();
+        }
+        return;
+    }
+
+    if let Ok(Some(monitor)) = window.current_monitor() {
+        let area = monitor.work_area();
+        let width = area
+            .size
+            .width
+            .saturating_mul(3)
+            .saturating_div(4)
+            .min(1440);
+        let height = area
+            .size
+            .height
+            .saturating_mul(3)
+            .saturating_div(4)
+            .min(820);
+        let _ = window.set_size(tauri::PhysicalSize::new(width, height));
+    }
+    let _ = window.center();
+    if saved.is_some_and(|state| state.maximized) {
+        let _ = window.maximize();
+    }
 }
 
 fn normalize_path_display(path: &Path) -> String {
@@ -940,6 +1044,21 @@ pub fn run() {
                 .ok_or("main window not found")?;
             let icon = Image::from_bytes(include_bytes!("../icons/128x128.png"))?;
             let _ = window.set_icon(icon);
+            restore_window_state(&window);
+            if let Some(path) = window_state_path(&window) {
+                persist_window_state(&window, &path);
+                let window_for_events = window.clone();
+                window.on_window_event(move |event| {
+                    if matches!(
+                        event,
+                        WindowEvent::Moved(_)
+                            | WindowEvent::Resized(_)
+                            | WindowEvent::CloseRequested { .. }
+                    ) {
+                        persist_window_state(&window_for_events, &path);
+                    }
+                });
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
