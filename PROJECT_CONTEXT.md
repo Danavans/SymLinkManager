@@ -1,81 +1,45 @@
-# Symlink Manager - Project Context
+# Symlink Manager — Project Context
 
-## Resume rapide
-- Projet dans `D:\Medias\Divers\Tools\SymLinkManager\SymLinkManager` (Tauri + Svelte).
-- Objectif: scanner, exporter et recreer des symlinks Windows/Linux avec remap de racines.
-- UI en anglais, theme sombre (fond sombre global, cards sombres, texte clair, accents orange).
+## Product
+Portable Tauri + Svelte desktop application to scan, export and recreate symbolic links on Windows/Linux. UI text is English. No extra runtime service, build stage or database.
 
-## Agent instructions
-- See `AGENTS.md` for operational rules and editing guidance.
-- If `AGENTS.md` conflicts with this document, follow `AGENTS.md`.
+Read AGENTS.md for operational rules. It takes precedence over this document.
 
-## Decisions UX principales
-- Deux onglets: Scan & Export / Import & Recreate.
-- Layout aligne en haut (pas de centrage vertical).
-- Fond sombre applique a la racine pour couvrir 100% de la hauteur.
-- Status global en bas (bulle discrete) visible sur tous les onglets.
+## Current UI (2026-09-17)
+Graphite dark surfaces and mint accents; rose = broken, amber = unreadable. Sidebar with Scan & export and Import & recreate. The scan workspace includes health filters, comma-separated OR search and `-term` exclusions, sortable inventory, 100-row pagination and filtered export across all pages. Import is a three-step flow with automatic preview, detected roots, editable mapping rules and replacement confirmation. Native HTML dialogs contain focus. Status is visible in the bottom bar. Narrow windows reflow navigation and panels.
 
-## Fonctionnalites principales
-- Scan de symlinks dans un dossier racine (OK/Broken/Unreadable).
-- Export JSON avec `relative`, `target`, `status`, `link_is_dir`.
-- Import JSON + recreation en bulk.
-- Root remap rules pour changer les prefixes de `target`.
-- Elevation auto Windows (UAC) si creation de symlink bloquee.
-- Recherche dynamique dans les resultats (multi-termes et exclusions avec `-term`).
-- Export respecte le filtre de recherche (si vide, export complet).
-- Preview import auto-refresh des remap rules + echantillon par racine detectee.
-- Clic sur une racine detectee pour pre-remplir une regle de remap.
-- Confirmation si des items existants seront remplaces.
-- Modals theme pour import/export.
-- Affichage des chemins adapte a l'OS (slashs coherents).
-- Compteur "Skipped" si le scan rencontre des erreurs de lecture.
+`assets/icon.svg` is the brand source; `static/logo.svg`, favicon and all Tauri platform/window icons use the same mark. Generate icons using the existing Tauri CLI when changing the mark. Fonts are local/system only.
 
-## Format JSON
-```
+## Data compatibility
+```json
 {
-  "src_root": "D:\Media\Library",
+  "src_root": "D:\\Media\\Library",
   "entries": [
-    {
-      "relative": "Series\Show\link.mkv",
-      "target": "W:\Shows\Show\file.mkv",
-      "status": "OK",
-      "link_is_dir": true
-    }
+    { "relative": "Series\\Show\\link.mkv", "target": "W:\\Shows\\Show\\file.mkv", "status": "OK", "link_is_dir": false }
   ]
 }
 ```
+Statuses: OK, Broken (target not found), Unreadable (target cannot be verified or link cannot be read). Skipped counts traversal errors. Scan resolves the selected root to an absolute path and never descends into discovered linked folders.
 
-## Root remap rules (comportement)
-- Appliquees sur `target` uniquement.
-- Premiere regle qui matche gagne.
-- Normalisation des slashs et case-insensitive sur Windows.
+Root mappings affect targets only; first match wins, path boundaries matter, slash normalization and case-insensitive matching apply on Windows. Targets inside src_root also follow dst_root after explicit mappings. Preserve this historical behavior.
 
-## Elevation Windows
-- Si erreur `os error 1314`, l'app declenche un relaunch admin.
-- Le process admin lit un job temporaire et ecrit un resultat temporaire dans `%TEMP%`.
+## Safety and execution
+Scan and bulk filesystem operations run off the main thread. Scan uses up to eight standard-library workers and one metadata read per accessible target. Replacement temporarily preserves an existing item and restores it if symlink creation fails; non-empty real directories are never replaced. Imported relative paths are validated and linked destination ancestors rejected. This does not promise immunity to concurrent external filesystem mutation or process crashes.
 
-## Fichiers modifies principaux
-- `src/routes/+page.svelte`: UI onglets, table scan, remap, status bubble, modals.
-- `src-tauri/src/lib.rs`: commandes, symlinks, remap, elevation admin.
-- `src-tauri/src/main.rs`: detecte job admin et execute.
-- `src-tauri/tauri.conf.json`: bundle inactive (portable), metadata app.
+Windows error 1314 triggers the existing UAC worker via --admin-recreate. The worker reads a temporary job and publishes a result including failure details. Job IDs are validated, jobs use exclusive creation, and result publication uses rename. Polling remains 60 seconds; see AUDIT.md for remaining limitations.
 
-## Build / nettoyage
-- Dev: `npm run tauri dev`
-- Build portable Windows: `npm run tauri build` (exe dans `src-tauri/target/release/`).
-- Dossiers safe a supprimer: `src-tauri/target`, `node_modules`, `.svelte-kit`, `build`.
+## Main files
+- src/routes/+page.svelte: UI and interaction state.
+- src-tauri/src/lib.rs: commands, scan, remap, recreation and elevation.
+- src-tauri/src/main.rs: elevated-worker entry point.
+- src-tauri/tauri.conf.json: portable bundle settings, window and CSP.
+- src-tauri/src/tests.rs and scan_baseline.rs: checks and before/after scan benchmark (test-only).
+- src/lib/ui-fixture.js: explicit Vite test-mode IPC fixture; excluded from production.
+- tests/benchmark.ps1: disposable Windows NTFS junction fixture.
+- AUDIT.md: findings, measurements, verification and follow-up priorities.
 
-## Notes
-- Sur Windows, symlink = droits admin ou Developer Mode.
-- Pas de panels clairs, pas de fond clair.
-- Preview import affiche racines detectees + echantillon (auto-refresh).
-- Scan Results: hauteur table 500px, status bubble fixee en bas.
-
-## Derniere mise a jour
-- 2026-01-12
-
-## Changelog
-- 2026-01-12: Renommage "Symlink Manager"; preview auto-refresh; confirmation replace; modals import/export; statuts Unreadable + Skipped; affichage chemins adapte OS; clic sur racines detectees; table scan 500px.
-- 2026-01-10: Fenetre Tauri 1380x745 centree; stats top-right avec Entries + Import loaded sur une ligne, separateur, centrage des labels/valeurs (y compris Scan root).
-- 2026-01-09: UI onglets + theme sombre, import/export, remap roots, elevation admin, preview roots + sample.
-- 2026-01-09: Recherche dynamique (multi-termes + exclusions), export filtre, status bubble.
+## Commands
+`npm run check`, `npm run build`, `npm run tauri dev`, `npm run tauri build`.
+Rust checks: `cargo test --manifest-path src-tauri/Cargo.toml --lib`.
+Benchmark: `./tests/benchmark.ps1` in PowerShell 7, or the ignored Rust benchmark where symlink privileges are available.
+Portable Windows executable: src-tauri/target/release/symlinkmanager.exe.

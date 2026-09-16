@@ -15,11 +15,13 @@
         "title": "Symlink Manager",
         "width": 1380,
         "height": 745,
-        "center": true
+        "center": true,
+        "minWidth": 680,
+        "minHeight": 600
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data:; connect-src ipc: http://ipc.localhost"
     }
   },
   "bundle": {
@@ -34,6 +36,3 @@
     ]
   }
 }
-
-
-

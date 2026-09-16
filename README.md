@@ -109,3 +109,9 @@ If you package the Linux build as an archive, use a clear name such as:
 Symlink Manager only manages symbolic links. It does not copy the real target files.
 
 Before recreating links into an important folder, check the preview and replacement warning carefully.
+
+## Redesigned workspace and verification
+
+The workspace now includes clickable health filters, 100-row pages, a guided import flow and one consistent connection logo. Export includes all matching rows across pages. Incomplete remap rules must be completed or removed before recreation. Existing items are preserved until replacement succeeds; non-empty directories and destinations beneath linked ancestors are refused.
+
+Scans use bounded background workers. See [AUDIT.md](AUDIT.md) for measured results, reproducible tests and known limitations. UI-only fixture: `node node_modules/vite/bin/vite.js --mode test --port 1422`. This mode uses synthetic data and does not modify files.

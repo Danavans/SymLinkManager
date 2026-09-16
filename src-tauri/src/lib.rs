@@ -1,14 +1,14 @@
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::io::ErrorKind;
-use std::time::{SystemTime, UNIX_EPOCH};
-use std::path::{Path, PathBuf};
-use walkdir::WalkDir;
-use tauri::{image::Image, Manager};
 #[cfg(windows)]
 use std::ffi::OsStr;
+use std::fs;
+use std::io::ErrorKind;
 #[cfg(windows)]
 use std::os::windows::ffi::OsStrExt;
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::{image::Image, Manager};
+use walkdir::WalkDir;
 #[cfg(windows)]
 use windows_sys::Win32::UI::Shell::ShellExecuteW;
 #[cfg(windows)]
@@ -96,12 +96,18 @@ struct AdminResult {
     created: usize,
     failed: usize,
     sample_links: Vec<String>,
+    #[serde(default)]
+    errors: Vec<String>,
 }
 
 fn normalize_path_display(path: &Path) -> String {
     let raw = path.to_string_lossy().to_string();
-    if raw.starts_with(r"\\?\") {
-        raw.trim_start_matches(r"\\?\").to_string()
+    if let Some(stripped) = raw.strip_prefix(r"\\?\") {
+        if let Some(unc) = raw.strip_prefix(r"\\?\UNC\") {
+            format!(r"\\{}", unc)
+        } else {
+            stripped.to_string()
+        }
     } else {
         raw
     }
@@ -119,7 +125,6 @@ fn normalize_for_match(input: &str) -> String {
     }
     value
 }
-
 
 fn normalize_for_match_keep_case(input: &str) -> String {
     let mut value = input.replace('\\', "/");
@@ -144,8 +149,7 @@ fn collapse_slashes(input: &str) -> String {
         out
     }
 
-    if input.starts_with("//") {
-        let rest = &input[2..];
+    if let Some(rest) = input.strip_prefix("//") {
         let collapsed = collapse_single(rest);
         format!("//{}", collapsed.trim_start_matches('/'))
     } else {
@@ -173,7 +177,7 @@ fn extract_root_bucket(path: &str) -> String {
     if normalized.len() >= 2 && normalized.as_bytes()[1] == b':' {
         let drive = normalized[0..2].to_uppercase();
         let rest = normalized[2..].trim_start_matches('/');
-        let first = rest.split('/').filter(|s| !s.is_empty()).next();
+        let first = rest.split('/').find(|s| !s.is_empty());
         return match first {
             Some(segment) => format!("{}/{}", drive, segment),
             None => format!("{}/", drive),
@@ -193,8 +197,7 @@ fn extract_root_bucket(path: &str) -> String {
 
     normalized
         .split('/')
-        .filter(|part| !part.is_empty())
-        .next()
+        .find(|part| !part.is_empty())
         .unwrap_or("")
         .to_string()
 }
@@ -235,40 +238,43 @@ fn join_root(root: &str, suffix: &str) -> String {
     out
 }
 
-fn replace_root(target: &str, from: &str, to: &str) -> String {
+fn mapped_root(target: &str, from: &str, to: &str) -> Option<String> {
     if from.trim().is_empty() || to.trim().is_empty() {
-        return target.to_string();
+        return None;
     }
-    let target_norm = normalize_for_match(target);
     let target_keep = normalize_for_match_keep_case(target);
+    let target_norm = normalize_for_match(target);
     let from_norm = normalize_for_match(from);
-    if target_norm == from_norm || target_norm.starts_with(&(from_norm.clone() + "/")) {
-        let mut suffix = target_keep.get(from_norm.len()..).unwrap_or("");
-        if let Some(stripped) = suffix.strip_prefix('/') {
-            suffix = stripped;
-        }
-        return join_root(to, suffix);
+    if target_norm == from_norm {
+        return Some(to.to_string());
     }
-    target.to_string()
+    if from_norm == "/" && target_norm.starts_with('/') && !target_norm.starts_with("//") {
+        return Some(join_root(to, target_keep.trim_start_matches('/')));
+    }
+    if from_norm == "/" {
+        return None;
+    }
+    if target_norm.starts_with(&(from_norm.clone() + "/")) {
+        // Count components instead of slicing a lowercased Unicode string by byte length.
+        let suffix = target_keep
+            .split('/')
+            .skip(from_norm.split('/').count())
+            .collect::<Vec<_>>()
+            .join("/");
+        return Some(join_root(to, &suffix));
+    }
+    None
+}
+
+fn replace_root(target: &str, from: &str, to: &str) -> String {
+    mapped_root(target, from, to).unwrap_or_else(|| target.to_string())
 }
 
 fn apply_mappings(target: &str, mappings: &[MappingRule]) -> String {
-    let target_norm = normalize_for_match(target);
-    let target_keep = normalize_for_match_keep_case(target);
-    for mapping in mappings {
-        if mapping.from.trim().is_empty() || mapping.to.trim().is_empty() {
-            continue;
-        }
-        let from_norm = normalize_for_match(&mapping.from);
-        if target_norm == from_norm || target_norm.starts_with(&(from_norm.clone() + "/")) {
-            let mut suffix = target_keep.get(from_norm.len()..).unwrap_or("");
-            if let Some(stripped) = suffix.strip_prefix('/') {
-                suffix = stripped;
-            }
-            return join_root(&mapping.to, suffix);
-        }
-    }
-    target.to_string()
+    mappings
+        .iter()
+        .find_map(|rule| mapped_root(target, &rule.from, &rule.to))
+        .unwrap_or_else(|| target.to_string())
 }
 
 fn remap_target(target: &str, mappings: &[MappingRule], src_root: &str, dst_root: &str) -> String {
@@ -283,7 +289,7 @@ fn normalize_relative_for_os(relative: &str) -> String {
     }
     #[cfg(windows)]
     {
-        return relative.to_string();
+        relative.to_string()
     }
 }
 
@@ -292,12 +298,75 @@ fn link_path(dst_root: &str, relative: &str) -> PathBuf {
     PathBuf::from(dst_root).join(normalized)
 }
 
+fn validate_data(data: &ExportData) -> Result<(), String> {
+    let mut seen = std::collections::HashSet::new();
+    for entry in &data.entries {
+        let path = entry.relative.replace('\\', "/");
+        if path.is_empty()
+            || path.starts_with('/')
+            || (path.as_bytes().get(1) == Some(&b':') && path.as_bytes()[0].is_ascii_alphabetic())
+            || (cfg!(windows) && path.contains(':'))
+            || path.contains('\0')
+            || path.split('/').any(|part| {
+                part.is_empty()
+                    || part == ".."
+                    || part == "."
+                    || (cfg!(windows) && part.ends_with([' ', '.']))
+            })
+            || entry.target.is_empty()
+            || entry.target.contains('\0')
+        {
+            return Err(format!(
+                "Unsafe or unreadable imported entry: {}",
+                entry.relative
+            ));
+        }
+        #[cfg(windows)]
+        for part in path.split('/') {
+            let stem = part.split('.').next().unwrap_or("").to_ascii_uppercase();
+            if ["CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"].contains(&stem.as_str())
+                || ((stem.starts_with("COM") || stem.starts_with("LPT"))
+                    && stem.len() == 4
+                    && matches!(stem.as_bytes()[3], b'1'..=b'9'))
+            {
+                return Err(format!("Reserved Windows name: {}", entry.relative));
+            }
+        }
+        let key = if cfg!(windows) {
+            path.to_lowercase()
+        } else {
+            path
+        };
+        if !seen.insert(key) {
+            return Err(format!("Duplicate imported path: {}", entry.relative));
+        }
+    }
+    Ok(())
+}
+
+fn validate_destination(link: &Path) -> Result<(), String> {
+    let mut parent = link.parent();
+    while let Some(path) = parent {
+        if let Ok(metadata) = fs::symlink_metadata(path) {
+            if metadata.file_type().is_symlink() {
+                return Err(format!(
+                    "Destination parent is a symlink: {}",
+                    path.display()
+                ));
+            }
+        }
+        parent = path.parent();
+    }
+    Ok(())
+}
+
 fn recreate_symlinks_inner(
     data: ExportData,
     dst_root: String,
     mappings: Vec<MappingRule>,
     missing_as_dir: bool,
 ) -> Result<RecreateResult, String> {
+    validate_data(&data)?;
     if dst_root.trim().is_empty() {
         return Err("Select a valid target root.".to_string());
     }
@@ -307,9 +376,20 @@ fn recreate_symlinks_inner(
     let mut sample_links = Vec::new();
 
     for entry in data.entries {
+        if entry.target == "<unreadable>" {
+            failed.push(format!(
+                "{}: original target could not be read",
+                entry.relative
+            ));
+            continue;
+        }
         let link = link_path(&dst_root, &entry.relative);
         let target = remap_target(&entry.target, &mappings, &data.src_root, &dst_root);
         let target_path = PathBuf::from(&target);
+        if let Err(err) = validate_destination(&link) {
+            failed.push(err);
+            continue;
+        }
 
         if let Some(parent) = link.parent() {
             if let Err(err) = fs::create_dir_all(parent) {
@@ -323,16 +403,50 @@ fn recreate_symlinks_inner(
             }
         }
 
-        if fs::symlink_metadata(&link).is_ok() {
-            if fs::remove_file(&link).is_err() {
-                let _ = fs::remove_dir(&link);
-            }
-        }
-
         let link_is_dir = entry
             .link_is_dir
-            .or_else(|| infer_link_is_dir(&target_path, &link))
+            .or_else(|| {
+                infer_link_is_dir(
+                    &if target_path.is_absolute() {
+                        target_path.clone()
+                    } else {
+                        link.parent()
+                            .unwrap_or(Path::new(&dst_root))
+                            .join(&target_path)
+                    },
+                    &link,
+                )
+            })
             .unwrap_or(missing_as_dir);
+
+        let backup = link.with_file_name(format!(
+            ".symlinkmanager-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        let replacing = fs::symlink_metadata(&link).is_ok();
+        if replacing {
+            if fs::symlink_metadata(&link)
+                .map(|m| m.is_dir() && !m.file_type().is_symlink())
+                .unwrap_or(false)
+                && fs::read_dir(&link)
+                    .map(|mut d| d.next().is_some())
+                    .unwrap_or(true)
+            {
+                failed.push(format!(
+                    "Refusing to replace non-empty directory: {}",
+                    link.display()
+                ));
+                continue;
+            }
+            if let Err(err) = fs::rename(&link, &backup) {
+                failed.push(format!("Cannot preserve {}: {err}", link.display()));
+                continue;
+            }
+        }
 
         let result = {
             #[cfg(unix)]
@@ -351,6 +465,21 @@ fn recreate_symlinks_inner(
             }
         };
 
+        if replacing {
+            if result.is_err() {
+                if let Err(err) = fs::rename(&backup, &link) {
+                    failed.push(format!(
+                        "Restore failed; original retained at {}: {err}",
+                        backup.display()
+                    ));
+                }
+            } else if fs::remove_file(&backup)
+                .or_else(|_| fs::remove_dir(&backup))
+                .is_err()
+            {
+                failed.push(format!("Original retained at {}", backup.display()));
+            }
+        }
         match result {
             Ok(_) => {
                 created += 1;
@@ -413,11 +542,18 @@ fn write_admin_job(job: &AdminJob) -> Result<PathBuf, String> {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|err| err.to_string())?
-        .as_secs();
+        .as_nanos();
     let filename = format!("symlinkmanager_admin_{}_{}.json", std::process::id(), now);
     let path = std::env::temp_dir().join(filename);
     let payload = serde_json::to_string_pretty(job).map_err(|err| err.to_string())?;
-    fs::write(&path, payload).map_err(|err| err.to_string())?;
+    use std::io::Write;
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .map_err(|err| err.to_string())?;
+    file.write_all(payload.as_bytes())
+        .map_err(|err| err.to_string())?;
     Ok(path)
 }
 
@@ -453,21 +589,28 @@ pub fn handle_admin_recreate() -> bool {
             return true;
         }
     };
-    let result = recreate_symlinks_inner(
-        job.data,
-        job.dst_root,
-        job.mappings,
-        job.missing_as_dir,
-    );
-    if let Ok(result) = result {
-        let payload = AdminResult {
-            created: result.created,
-            failed: result.failed.len(),
-            sample_links: result.sample_links,
+    let result = recreate_symlinks_inner(job.data, job.dst_root, job.mappings, job.missing_as_dir);
+    {
+        let payload = match result {
+            Ok(result) => AdminResult {
+                created: result.created,
+                failed: result.failed.len(),
+                sample_links: result.sample_links,
+                errors: result.failed,
+            },
+            Err(err) => AdminResult {
+                created: 0,
+                failed: 1,
+                sample_links: Vec::new(),
+                errors: vec![err],
+            },
         };
         let result_path = admin_result_path(&job.job_id);
         if let Ok(json) = serde_json::to_string_pretty(&payload) {
-            let _ = fs::write(result_path, json);
+            let pending = result_path.with_extension("pending");
+            if fs::write(&pending, json).is_ok() {
+                let _ = fs::rename(pending, result_path);
+            }
         }
     }
     let _ = fs::remove_file(&job_path);
@@ -490,73 +633,112 @@ fn infer_link_is_dir(target: &Path, link_path: &Path) -> Option<bool> {
 }
 
 #[tauri::command]
-fn scan_symlinks(root: String) -> Result<ScanResult, String> {
-    let root_path = PathBuf::from(root.trim());
+async fn scan_symlinks(root: String) -> Result<ScanResult, String> {
+    tauri::async_runtime::spawn_blocking(move || scan_inner(root))
+        .await
+        .map_err(|err| err.to_string())?
+}
+
+fn link_directory_hint(link: &Path) -> Option<bool> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        fs::symlink_metadata(link)
+            .ok()
+            .map(|m| m.file_attributes() & 0x10 != 0)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = link;
+        None
+    }
+}
+
+fn scan_inner(root: String) -> Result<ScanResult, String> {
+    let root_path =
+        fs::canonicalize(root.trim()).map_err(|err| format!("Invalid scan folder: {err}"))?;
     if !root_path.is_dir() {
-        return Err("Invalid scan folder.".to_string());
+        return Err("Invalid scan folder.".into());
     }
-
-    let mut entries = Vec::new();
-    let mut skipped = 0usize;
-    for entry in WalkDir::new(&root_path).follow_links(false) {
-        let entry = match entry {
-            Ok(value) => value,
-            Err(_) => {
-                skipped += 1;
-                continue;
-            }
-        };
-        if !entry.file_type().is_symlink() {
-            continue;
+    let mut skipped = 0;
+    let mut links = Vec::new();
+    for entry in WalkDir::new(&root_path).follow_links(false).min_depth(1) {
+        match entry {
+            Ok(entry) if entry.file_type().is_symlink() => links.push(entry),
+            Err(_) => skipped += 1,
+            _ => {}
         }
-        let link_path = entry.path();
-        let relative = match link_path.strip_prefix(&root_path) {
-            Ok(rel) => rel,
-            Err(_) => continue,
-        };
-        let target = match fs::read_link(link_path) {
-            Ok(value) => value,
-            Err(_) => {
-                entries.push(SymlinkEntry {
-                    relative: normalize_path_display(relative),
-                    target: "<unreadable>".to_string(),
-                    status: "Unreadable".to_string(),
-                    link_is_dir: infer_link_is_dir(Path::new(""), link_path),
-                });
-                continue;
-            }
-        };
-        let target_abs = if target.is_absolute() {
-            target
-        } else {
-            link_path
-                .parent()
-                .unwrap_or(&root_path)
-                .join(target)
-        };
-        let status = match fs::metadata(&target_abs) {
-            Ok(_) => "OK",
-            Err(err) => {
-                if err.kind() == ErrorKind::PermissionDenied {
-                    "Unreadable"
-                } else {
-                    "Broken"
-                }
-            }
-        };
-        let link_is_dir = infer_link_is_dir(&target_abs, link_path);
-        entries.push(SymlinkEntry {
-            relative: normalize_path_display(relative),
-            target: normalize_path_display(&target_abs),
-            status: status.to_string(),
-            link_is_dir,
-        });
     }
-
+    // ponytail: eight bounded workers; tune only after measurements on network storage.
+    let chunk_size = links.len().div_ceil(8).max(1);
+    let entries = std::thread::scope(|scope| {
+        let workers: Vec<_> = links
+            .chunks(chunk_size)
+            .map(|chunk| {
+                let root_path = &root_path;
+                scope.spawn(move || {
+                    chunk
+                        .iter()
+                        .filter_map(|entry| scan_entry(entry, root_path))
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        workers
+            .into_iter()
+            .flat_map(|worker| worker.join().expect("scan worker panicked"))
+            .collect()
+    });
     Ok(ScanResult {
         src_root: normalize_path_display(&root_path),
         entries,
         skipped,
+    })
+}
+
+fn scan_entry(entry: &walkdir::DirEntry, root_path: &Path) -> Option<SymlinkEntry> {
+    let link_path = entry.path();
+    let relative = match link_path.strip_prefix(root_path) {
+        Ok(rel) => rel,
+        Err(_) => return None,
+    };
+    let target = match fs::read_link(link_path) {
+        Ok(value) => value,
+        Err(_) => {
+            return Some(SymlinkEntry {
+                relative: normalize_path_display(relative),
+                target: "<unreadable>".to_string(),
+                status: "Unreadable".to_string(),
+                link_is_dir: link_directory_hint(link_path),
+            });
+        }
+    };
+    let target_abs = if target.is_absolute() {
+        target
+    } else {
+        link_path.parent().unwrap_or(root_path).join(target)
+    };
+    let metadata = fs::metadata(&target_abs);
+    let status = match &metadata {
+        Ok(_) => "OK",
+        Err(err) => {
+            if err.kind() != ErrorKind::NotFound {
+                "Unreadable"
+            } else {
+                "Broken"
+            }
+        }
+    };
+    let link_is_dir = metadata
+        .as_ref()
+        .ok()
+        .map(|m| m.is_dir())
+        .or_else(|| link_directory_hint(link_path));
+    Some(SymlinkEntry {
+        relative: normalize_path_display(relative),
+        target: normalize_path_display(&target_abs),
+        status: status.to_string(),
+        link_is_dir,
     })
 }
 
@@ -569,7 +751,9 @@ fn export_symlinks(path: String, data: ExportData) -> Result<(), String> {
 #[tauri::command]
 fn load_export(path: String) -> Result<ExportData, String> {
     let raw = fs::read_to_string(path).map_err(|err| err.to_string())?;
-    serde_json::from_str(&raw).map_err(|err| err.to_string())
+    let data: ExportData = serde_json::from_str(&raw).map_err(|err| err.to_string())?;
+    validate_data(&data)?;
+    Ok(data)
 }
 
 #[tauri::command]
@@ -579,12 +763,13 @@ fn preview_recreate(
     mappings: Vec<MappingRule>,
     max_preview: usize,
 ) -> Result<PreviewResult, String> {
+    validate_data(&data)?;
     if dst_root.trim().is_empty() {
         return Err("Select a valid target root.".to_string());
     }
 
     let mut sample = Vec::new();
-    for entry in data.entries.iter().take(max_preview) {
+    for entry in data.entries.iter().take(max_preview.min(100)) {
         let link = link_path(&dst_root, &entry.relative);
         let target = remap_target(&entry.target, &mappings, &data.src_root, &dst_root);
         sample.push(PreviewItem {
@@ -628,86 +813,57 @@ fn preview_recreate(
 }
 
 #[tauri::command]
-fn check_recreate_conflicts(
+async fn check_recreate_conflicts(
     data: ExportData,
     dst_root: String,
     mappings: Vec<MappingRule>,
 ) -> Result<ConflictReport, String> {
-    let _ = mappings;
-    if dst_root.trim().is_empty() {
-        return Err("Select a valid target root.".to_string());
-    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let _ = mappings;
+        validate_data(&data)?;
+        if dst_root.trim().is_empty() {
+            return Err("Select a valid target root.".to_string());
+        }
 
-    let mut total = 0usize;
-    let mut non_symlink = 0usize;
-    let mut sample = Vec::new();
+        let mut total = 0usize;
+        let mut non_symlink = 0usize;
+        let mut sample = Vec::new();
 
-    for entry in data.entries.iter() {
-        let link = link_path(&dst_root, &entry.relative);
-        if let Ok(metadata) = fs::symlink_metadata(&link) {
-            total += 1;
-            if !metadata.file_type().is_symlink() {
-                non_symlink += 1;
-            }
-            if sample.len() < 10 {
-                sample.push(normalize_path_display(&link));
+        for entry in data.entries.iter() {
+            let link = link_path(&dst_root, &entry.relative);
+            if let Ok(metadata) = fs::symlink_metadata(&link) {
+                total += 1;
+                if !metadata.file_type().is_symlink() {
+                    non_symlink += 1;
+                }
+                if sample.len() < 10 {
+                    sample.push(normalize_path_display(&link));
+                }
             }
         }
-    }
 
-    Ok(ConflictReport {
-        total,
-        non_symlink,
-        sample,
+        Ok(ConflictReport {
+            total,
+            non_symlink,
+            sample,
+        })
     })
+    .await
+    .map_err(|err| err.to_string())?
 }
 
 #[tauri::command]
-fn recreate_symlinks(
+async fn recreate_symlinks(
     data: ExportData,
     dst_root: String,
     mappings: Vec<MappingRule>,
     missing_as_dir: bool,
 ) -> Result<RecreateResult, String> {
-    recreate_symlinks_inner(data, dst_root, mappings, missing_as_dir)
-}
-
-#[tauri::command]
-fn recreate_symlinks_admin(
-    data: ExportData,
-    dst_root: String,
-    mappings: Vec<MappingRule>,
-    missing_as_dir: bool,
-) -> Result<(), String> {
-    #[cfg(windows)]
-    {
-        let job_id = format!(
-            "{}_{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map_err(|err| err.to_string())?
-                .as_secs()
-        );
-        let job = AdminJob {
-            data,
-            dst_root,
-            mappings,
-            missing_as_dir,
-            job_id,
-        };
-        let job_path = write_admin_job(&job)?;
-        launch_admin_recreate(&job_path)?;
-        return Ok(());
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = data;
-        let _ = dst_root;
-        let _ = mappings;
-        let _ = missing_as_dir;
-        Err("Admin elevation is only available on Windows.".to_string())
-    }
+    tauri::async_runtime::spawn_blocking(move || {
+        recreate_symlinks_inner(data, dst_root, mappings, missing_as_dir)
+    })
+    .await
+    .map_err(|err| err.to_string())?
 }
 
 #[tauri::command]
@@ -719,7 +875,14 @@ fn start_admin_recreate(
 ) -> Result<String, String> {
     #[cfg(windows)]
     {
-        let job_id = format!("{}_{}", std::process::id(), SystemTime::now().duration_since(UNIX_EPOCH).map_err(|err| err.to_string())?.as_secs());
+        let job_id = format!(
+            "{}_{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|err| err.to_string())?
+                .as_nanos()
+        );
         let job = AdminJob {
             data,
             dst_root,
@@ -728,8 +891,11 @@ fn start_admin_recreate(
             job_id: job_id.clone(),
         };
         let job_path = write_admin_job(&job)?;
-        launch_admin_recreate(&job_path)?;
-        return Ok(job_id);
+        if let Err(err) = launch_admin_recreate(&job_path) {
+            let _ = fs::remove_file(job_path);
+            return Err(err);
+        }
+        Ok(job_id)
     }
     #[cfg(not(windows))]
     {
@@ -743,6 +909,9 @@ fn start_admin_recreate(
 
 #[tauri::command]
 fn poll_admin_result(job_id: String) -> Result<Option<AdminResult>, String> {
+    if job_id.is_empty() || !job_id.chars().all(|c| c.is_ascii_digit() || c == '_') {
+        return Err("Invalid admin job ID".into());
+    }
     #[cfg(windows)]
     {
         let path = admin_result_path(&job_id);
@@ -752,7 +921,7 @@ fn poll_admin_result(job_id: String) -> Result<Option<AdminResult>, String> {
         let raw = fs::read_to_string(&path).map_err(|err| err.to_string())?;
         let result: AdminResult = serde_json::from_str(&raw).map_err(|err| err.to_string())?;
         let _ = fs::remove_file(&path);
-        return Ok(Some(result));
+        Ok(Some(result))
     }
     #[cfg(not(windows))]
     {
@@ -765,7 +934,6 @@ fn poll_admin_result(job_id: String) -> Result<Option<AdminResult>, String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let window = app
                 .get_webview_window("main")
@@ -781,10 +949,15 @@ pub fn run() {
             preview_recreate,
             check_recreate_conflicts,
             recreate_symlinks,
-            recreate_symlinks_admin,
             start_admin_recreate,
             poll_admin_result
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(test)]
+include!("scan_baseline.rs");
+
+#[cfg(test)]
+mod tests;
