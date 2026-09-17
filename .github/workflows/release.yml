@@ -18,11 +18,11 @@ on:
       linux_appimage:
         description: Linux AppImage
         type: boolean
-        default: true
+        default: false
       linux_deb:
         description: Linux DEB
         type: boolean
-        default: true
+        default: false
       macos_dmg:
         description: macOS DMG
         type: boolean
