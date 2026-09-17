@@ -1,6 +1,7 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
+  if (import.meta.env.MODE === "test") import("../lib/ui-fixture.js");
   import { open, save } from "@tauri-apps/plugin-dialog";
 
   /** @typedef {{ relative: string, target: string, status: string, link_is_dir?: boolean }} SymlinkEntry */
@@ -21,7 +22,7 @@
   /** @type {ExportData | null} */
   let importData = $state(null);
   /** @type {MappingRule[]} */
-  let mappings = $state([{ from: "", to: "" }]);
+  let mappings = $state([]);
   /** @type {PreviewState} */
   let preview = $state({ roots: [], sample: [], root_samples: [] });
   let status = $state("");
@@ -42,6 +43,41 @@
   /** @type {"import" | "export" | null} */
   let resultKind = $state(null);
   let osSep = $state("/");
+  let healthFilter = $state("All");
+  let page = $state(0);
+  let elapsed = $state("");
+  let scanned = $state(false);
+  let importName = $state("");
+  let previewError = $state("");
+  let previewBusy = $state(false);
+  let incompleteMapping = $derived(
+    mappings.some(
+      (item) => Boolean(item.from.trim()) !== Boolean(item.to.trim()),
+    ),
+  );
+  const pageSize = 100;
+  let filtered = $derived(filteredEntries());
+  let sorted = $derived(sortedEntries());
+  let pageCount = $derived(Math.max(1, Math.ceil(sorted.length / pageSize)));
+  let visible = $derived(
+    sorted.slice(
+      Math.min(page, pageCount - 1) * pageSize,
+      (Math.min(page, pageCount - 1) + 1) * pageSize,
+    ),
+  );
+  let health = $derived({
+    OK: scanData.entries.filter((e) => e.status === "OK").length,
+    Broken: scanData.entries.filter((e) => e.status === "Broken").length,
+    Unreadable: scanData.entries.filter((e) => e.status === "Unreadable")
+      .length,
+  });
+  $effect(() => {
+    scanQuery;
+    healthFilter;
+    sortKey;
+    sortDir;
+    page = 0;
+  });
   let previewSeq = 0;
   /** @type {ReturnType<typeof setTimeout> | null} */
   let previewTimer = null;
@@ -70,22 +106,27 @@
       .filter((term) => term.startsWith("-"))
       .map((term) => term.slice(1))
       .filter((term) => term.length > 0);
+    const candidates = scanData.entries.filter(
+      (entry) => healthFilter === "All" || entry.status === healthFilter,
+    );
     return includeTerms.length || excludeTerms.length
-      ? scanData.entries.filter((entry) => {
+      ? candidates.filter((entry) => {
           const rel = (entry.relative || "").toString().toLowerCase();
           const tgt = (entry.target || "").toString().toLowerCase();
           const st = (entry.status || "").toString().toLowerCase();
           const matchesInclude =
             includeTerms.length === 0 ||
             includeTerms.some(
-              (term) => rel.includes(term) || tgt.includes(term) || st.includes(term)
+              (term) =>
+                rel.includes(term) || tgt.includes(term) || st.includes(term),
             );
           const matchesExclude = excludeTerms.some(
-            (term) => rel.includes(term) || tgt.includes(term) || st.includes(term)
+            (term) =>
+              rel.includes(term) || tgt.includes(term) || st.includes(term),
           );
           return matchesInclude && !matchesExclude;
         })
-      : [...scanData.entries];
+      : [...candidates];
   }
 
   /** @param {SymlinkEntry} entry */
@@ -97,11 +138,14 @@
 
   /** @returns {SymlinkEntry[]} */
   function sortedEntries() {
-    const entries = filteredEntries();
+    const entries = [...filtered];
     const dir = sortDir === "asc" ? 1 : -1;
+    const keys = new Map(
+      entries.map((entry) => [entry, getSortValue(entry).toLowerCase()]),
+    );
     entries.sort((a, b) => {
-      const left = getSortValue(a).toString().toLowerCase();
-      const right = getSortValue(b).toString().toLowerCase();
+      const left = keys.get(a) || "";
+      const right = keys.get(b) || "";
       if (left < right) return -1 * dir;
       if (left > right) return 1 * dir;
       return 0;
@@ -133,7 +177,7 @@
     }
   }
 
-  /** @param {ResultData} data */
+  /** @param {ResultData} data @param {"import" | "export"} [kind] */
   function openResult(data, kind = "import") {
     resultKind = kind;
     resultData = data;
@@ -158,19 +202,16 @@
   onMount(() => {
     const ua = navigator.userAgent || "";
     osSep = ua.includes("Windows") ? "\\" : "/";
+    return () => {
+      if (previewTimer) clearTimeout(previewTimer);
+      previewSeq++;
+    };
   });
 
   /** @param {string} root */
   function addMappingFromRoot(root) {
     const trimmed = displayPath(root).trim();
     if (!trimmed) return;
-    const index = mappings.findIndex((item) => !item.from.trim());
-    if (index >= 0) {
-      mappings = mappings.map((item, idx) =>
-        idx == index ? { ...item, from: trimmed } : item
-      );
-      return;
-    }
     mappings = [...mappings, { from: trimmed, to: "" }];
   }
 
@@ -188,32 +229,47 @@
   /** @param {number} index */
   function removeMapping(index) {
     mappings = mappings.filter((_, idx) => idx !== index);
-    if (mappings.length === 0) {
-      mappings = [{ from: "", to: "" }];
-    }
   }
 
   async function browseScan() {
-    const selected = await open({ directory: true, multiple: false });
-    if (selected) scanRoot = selected;
+    try {
+      const selected = await open({ directory: true, multiple: false });
+      if (selected) scanRoot = selected;
+    } catch (err) {
+      setStatus(`Folder selection failed: ${err}`);
+    }
   }
 
   async function browseTarget() {
-    const selected = await open({ directory: true, multiple: false });
-    if (selected) dstRoot = selected;
+    try {
+      const selected = await open({ directory: true, multiple: false });
+      if (selected) dstRoot = selected;
+    } catch (err) {
+      setStatus(`Folder selection failed: ${err}`);
+    }
   }
 
   async function runScan() {
+    if (working) return;
     if (!scanRoot) {
       setStatus("Select a folder to scan.");
       return;
     }
     working = true;
+    setStatus("Scanning folders and checking targets…");
+    const started = performance.now();
     try {
       const result = await invoke("scan_symlinks", { root: scanRoot });
       scanData = result;
-      const skippedNote = result.skipped ? ` Skipped ${result.skipped} entries.` : "";
-      setStatus(`Scan complete. ${result.entries.length} symlinks found.${skippedNote}`);
+      scanned = true;
+      page = 0;
+      elapsed = ((performance.now() - started) / 1000).toFixed(2);
+      const skippedNote = result.skipped
+        ? ` Skipped ${result.skipped} entries.`
+        : "";
+      setStatus(
+        `Scan complete. ${result.entries.length} symlinks found.${skippedNote}`,
+      );
     } catch (err) {
       setStatus(`Scan failed: ${err}`);
     } finally {
@@ -222,27 +278,31 @@
   }
 
   async function exportJson() {
-    const entries = filteredEntries();
+    if (working) return;
+    const entries = [...filtered];
     if (!entries.length) {
       setStatus("Run a scan before exporting.");
       return;
     }
-    const path = await save({
-      filters: [{ name: "JSON", extensions: ["json"] }],
-      defaultPath: "symlinks.json"
-    });
-    if (!path) return;
     working = true;
     try {
+      const path = await save({
+        filters: [{ name: "JSON", extensions: ["json"] }],
+        defaultPath: "symlinks.json",
+      });
+      if (!path) return;
       await invoke("export_symlinks", {
         path,
         data: {
           src_root: scanData.src_root,
-          entries
-        }
+          entries,
+        },
       });
       setStatus(`Exported JSON to ${path}`);
-      openResult({ created: entries.length, failed: 0, sample_links: [path] }, "export");
+      openResult(
+        { created: entries.length, failed: 0, sample_links: [path] },
+        "export",
+      );
     } catch (err) {
       setStatus(`Export failed: ${err}`);
     } finally {
@@ -251,15 +311,20 @@
   }
 
   async function loadJson() {
-    const selected = await open({
-      multiple: false,
-      filters: [{ name: "JSON", extensions: ["json"] }]
-    });
-    if (!selected) return;
+    if (working) return;
     working = true;
     try {
+      const selected = await open({
+        multiple: false,
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      if (!selected) return;
       const result = await invoke("load_export", { path: selected });
       importData = result;
+      importName = selected.split(/[\\/]/).pop() || selected;
+      mappings = [];
+      preview = { roots: [], sample: [], root_samples: [] };
+      lastFailures = [];
       setStatus(`Loaded ${result.entries.length} entries.`);
     } catch (err) {
       setStatus(`Load failed: ${err}`);
@@ -269,12 +334,16 @@
   }
 
   function scheduleAutoPreview() {
+    previewSeq++;
+    previewError = "";
+    previewBusy = false;
     if (previewTimer) {
       clearTimeout(previewTimer);
       previewTimer = null;
     }
     if (activeTab !== "import") return;
     if (!importData || !dstRoot) return;
+    previewBusy = true;
     previewTimer = setTimeout(() => {
       previewRecreate(true);
     }, 300);
@@ -284,7 +353,9 @@
     activeTab;
     importData;
     dstRoot;
-    const mappingKey = mappings.map((item) => `${item.from}|${item.to}`).join("||");
+    const mappingKey = mappings
+      .map((item) => `${item.from}|${item.to}`)
+      .join("||");
     mappingKey;
     scheduleAutoPreview();
   });
@@ -306,28 +377,33 @@
     if (!silent) {
       working = true;
     }
+    previewBusy = true;
     const seq = (previewSeq += 1);
     try {
       const result = await invoke("preview_recreate", {
         data: importData,
         dstRoot,
         mappings: cleanMappings(),
-        maxPreview: importData.entries.length
+        maxPreview: 20,
       });
       if (seq !== previewSeq) return;
       preview = {
         roots: result.roots,
         sample: result.sample,
-        root_samples: result.root_samples || []
+        root_samples: result.root_samples || [],
       };
       if (!silent) {
-        setStatus(`Preview ready. ${result.roots.length} target roots detected.`);
+        setStatus(
+          `Preview ready. ${result.roots.length} target roots detected.`,
+        );
       }
     } catch (err) {
+      if (seq === previewSeq) previewError = `${err}`;
       if (!silent) {
         setStatus(`Preview failed: ${err}`);
       }
     } finally {
+      if (seq === previewSeq) previewBusy = false;
       if (!silent) {
         working = false;
       }
@@ -335,6 +411,7 @@
   }
 
   async function recreate() {
+    if (working) return;
     if (!importData) {
       setStatus("Load an export file first.");
       return;
@@ -348,10 +425,9 @@
       const conflicts = await invoke("check_recreate_conflicts", {
         data: importData,
         dstRoot,
-        mappings: cleanMappings()
+        mappings: cleanMappings(),
       });
       if (conflicts.total > 0) {
-        working = false;
         const accepted = await openConfirm(conflicts);
         if (!accepted) {
           setStatus("Recreate cancelled.");
@@ -363,22 +439,32 @@
         data: importData,
         dstRoot,
         mappings: cleanMappings(),
-        missingAsDir: false
+        missingAsDir: false,
+      });
+      openResult({
+        created: result.created,
+        failed: result.failed.length,
+        sample_links: result.sample_links || [],
       });
       lastFailures = result.failed || [];
       const failures = result.failed.length;
       if (failures) {
-        const needsAdmin = result.failed.some((/** @type {string} */ item) => item.includes("os error 1314"));
+        const needsAdmin = result.failed.some((/** @type {string} */ item) =>
+          item.includes("os error 1314"),
+        );
         if (needsAdmin) {
+          closeResult();
           try {
             lastFailures = [];
             const jobId = await invoke("start_admin_recreate", {
               data: importData,
               dstRoot,
               mappings: cleanMappings(),
-              missingAsDir: false
+              missingAsDir: false,
             });
-            setStatus("Admin prompt opened. Approve to continue recreating symlinks.");
+            setStatus(
+              "Admin prompt opened. Approve to continue recreating symlinks.",
+            );
             await pollAdminResult(jobId);
             return;
           } catch (adminErr) {
@@ -398,10 +484,12 @@
             data: importData,
             dstRoot,
             mappings: cleanMappings(),
-            missingAsDir: false
+            missingAsDir: false,
           });
           lastFailures = [];
-          setStatus("Admin prompt opened. Approve to continue recreating symlinks.");
+          setStatus(
+            "Admin prompt opened. Approve to continue recreating symlinks.",
+          );
           await pollAdminResult(jobId);
           return;
         } catch (adminErr) {
@@ -424,12 +512,15 @@
       try {
         const result = await invoke("poll_admin_result", { jobId });
         if (result) {
+          lastFailures = result.errors || [];
           openResult({
             created: result.created,
             failed: result.failed,
-            sample_links: result.sample_links || []
+            sample_links: result.sample_links || [],
           });
-          setStatus(`Created ${result.created} symlinks. ${result.failed} failed.`);
+          setStatus(
+            `Created ${result.created} symlinks. ${result.failed} failed.`,
+          );
           return;
         }
       } catch (err) {
@@ -437,933 +528,1500 @@
         return;
       }
     }
-    setStatus("Admin recreate still running. Check the destination folder in a moment.");
+    setStatus(
+      "Admin recreate still running. Check the destination folder in a moment.",
+    );
+  }
+
+  /** @param {HTMLDialogElement} node */
+  function showDialog(node) {
+    node.showModal();
   }
 </script>
 
 <main class="app">
-  <header class="hero">
-    <div>
-      <h1 class="hero-title">Symlink Manager</h1>
-      <p class="subtitle">
-        Scan, export, and recreate symlinks across Windows and Linux with bulk root remapping.
-      </p>
-    </div>
-    <div class="stats">
-      <div>
-        <span class="label">Scan root</span>
-        <span class="value">{scanData.src_root || "Not scanned"}</span>
-      </div>
-      <div class="stats-row">
-        <div>
-          <span class="label">Entries</span>
-          <span class="value">{scanData.entries.length}</span>
-        </div>
-        <span class="stat-sep" aria-hidden="true"></span>
-        <div>
-          <span class="label">Import loaded</span>
-          <span class="value">{importData ? importData.entries.length : 0}</span>
-        </div>
-      </div>
-    </div>
-  </header>
-
-  <section class="tabs">
-    <button
-      class:active={activeTab === "scan"}
-      type="button"
-      onclick={() => (activeTab = "scan")}
+  <aside class="sidebar">
+    <a
+      class="brand"
+      href="/"
+      onclick={(e) => {
+        e.preventDefault();
+        activeTab = "scan";
+      }}
+      ><img src="/logo.svg" alt="" /><span
+        >Symlink<span class="brand-sub">MANAGER</span></span
+      ></a
     >
-      Scan & Export
-    </button>
-    <button
-      class:active={activeTab === "import"}
-      type="button"
-      onclick={() => (activeTab = "import")}
-    >
-      Import & Recreate
-    </button>
-  </section>
-
-  {#if activeTab === "scan"}
-    <section class="grid">
-      <div class="panel lift-1">
-        <div class="panel-header">
-          <h2>Scan & Export</h2>
-          <span class="muted">Find symlinks in a folder tree.</span>
-        </div>
-        <div class="field">
-          <label for="scan-root">Folder to scan</label>
-          <div class="row">
-            <input
-              type="text"
-              placeholder="D:\Media\Library"
-              bind:value={scanRoot}
-              id="scan-root"
-            />
-            <button type="button" class="ghost" onclick={browseScan}>Browse</button>
-          </div>
-        </div>
-        <div class="row">
-          <button type="button" class="accent" onclick={runScan} disabled={working}>
-            Scan symlinks
-          </button>
-          <button type="button" class="ghost" onclick={exportJson} disabled={working}>
-            Export JSON
-          </button>
-        </div>
-      </div>
-    </section>
-
-    <section class="panel table-panel lift-3">
-      <div class="panel-header">
+    <div class="nav-label">WORKSPACE</div>
+    <nav aria-label="Main navigation">
+      <button
+        class:active={activeTab === "scan"}
+        onclick={() => (activeTab = "scan")}
+        aria-current={activeTab === "scan" ? "page" : undefined}
+        ><span class="nav-icon">⌕</span><span
+          >Scan & export<small>Explore your connections</small></span
+        ></button
+      >
+      <button
+        class:active={activeTab === "import"}
+        onclick={() => (activeTab = "import")}
+        aria-current={activeTab === "import" ? "page" : undefined}
+        ><span class="nav-icon">↗</span><span
+          >Import & recreate<small>Move links, keep connections</small></span
+        ></button
+      >
+    </nav>
+    <div class="platform">
+      v1.1.0
+    </div>
+  </aside>
+  <div class="workspace">
+    <div class="content">
+      <header class="page-heading">
         <div>
-          <h2>Scan Results</h2>
-          {#if scanData.skipped}
-            <div class="muted">Skipped: {scanData.skipped}</div>
-          {/if}
+          <h1>
+            {activeTab === "scan"
+              ? "Discover & Preserve"
+              : "A new home for your links."}
+          </h1>
+          <p class="subtitle">
+            {activeTab === "scan"
+              ? "Explore symbolic links, check their health, and take a portable snapshot."
+              : "Load a snapshot, map your paths, and recreate your connections."}
+          </p>
         </div>
-        <input
-          class="search-input"
-          type="text"
-          placeholder="Search..."
-          bind:value={scanQuery}
-        />
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>
-                <button type="button" class="sort" onclick={() => setSort("relative")}>
-                  Relative path
-                  <span class="caret" aria-hidden="true">{sortKey === "relative" ? (sortDir === "asc" ? "▲" : "▼") : ""}</span>
-                </button>
-              </th>
-              <th>
-                <button type="button" class="sort" onclick={() => setSort("target")}>
-                  Target
-                  <span class="caret" aria-hidden="true">{sortKey === "target" ? (sortDir === "asc" ? "▲" : "▼") : ""}</span>
-                </button>
-              </th>
-              <th>
-                <button type="button" class="sort" onclick={() => setSort("status")}>
-                  Status
-                  <span class="caret" aria-hidden="true">{sortKey === "status" ? (sortDir === "asc" ? "▲" : "▼") : ""}</span>
-                </button>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {#if scanData.entries.length === 0}
-              <tr>
-                <td colspan="3" class="muted">No scan data yet.</td>
-              </tr>
-            {:else}
-              {#each sortedEntries() as entry}
-                <tr class={entry.status === "Broken" ? "broken" : entry.status === "Unreadable" ? "unreadable" : ""}>
-                  <td>{entry.relative}</td>
-                  <td class="target-cell">
-                    <span class="target-text">{entry.target}</span>
-                  </td>
-                  <td class="status-cell">
-                    <span class="status-dot {entry.status === "Broken" ? "bad" : entry.status === "Unreadable" ? "warn" : "ok"}"></span>
-                  </td>
-                </tr>
-              {/each}
-            {/if}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  {:else}
-    <section class="grid">
-      <div class="panel lift-2">
-        <div class="panel-header">
-          <h2>Import & Recreate</h2>
-          <span class="muted">Remap roots, then recreate in bulk.</span>
-        </div>
-        <div class="row">
-          <button type="button" class="ghost" onclick={loadJson} disabled={working}>
-            Load JSON export
-          </button>
-        </div>
-        <div class="field field-gap">
-          <label for="target-root">Target root (links destination)</label>
-          <div class="row">
-            <input
-              type="text"
-              placeholder="D:\Media\Links"
-              bind:value={dstRoot}
-              id="target-root"
-            />
-            <button type="button" class="ghost" onclick={browseTarget}>Browse</button>
-          </div>
-        </div>
-        <div class="field">
-          <span class="field-label">Root remap rules</span>
-          <p class="hint">Replace target prefixes when moving between drives or OS roots.</p>
-        {#each mappings as mapping, index}
-            <div class="row mapping-row">
-              <input
-                type="text"
-                placeholder="W:\Shows"
-                bind:value={mapping.from}
+        <span class="heading-symbol" aria-hidden="true"
+          >{activeTab === "scan" ? "⌕" : "↗"}</span
+        >
+      </header>
+      {#if activeTab === "scan"}
+        <section class="scan-control panel" aria-label="Scan folder">
+          <form
+            onsubmit={(e) => {
+              e.preventDefault();
+              runScan();
+            }}
+            class="row"
+          >
+            <label class="sr-only" for="scan-root">Folder to scan</label>
+            <div class="path-input">
+              <span aria-hidden="true">⌑</span><input
+                id="scan-root"
+                placeholder={osSep === "/"
+                  ? "/home/you/library"
+                  : "D:\\Media\\Library"}
+                bind:value={scanRoot}
+                disabled={working}
               />
-              <span class="arrow">-&gt;</span>
-              <input
-                type="text"
-                placeholder="/mnt/media/shows"
-                bind:value={mapping.to}
-              />
-              <button
-                type="button"
-                class="ghost small remove"
-                aria-label="Remove mapping"
-                onclick={() => removeMapping(index)}
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2" />
-                  <line x1="8" y1="16" x2="16" y2="8" stroke="currentColor" stroke-width="2" />
-                </svg>
-              </button>
             </div>
-        {/each}
-        <button type="button" class="ghost small add-mapping" onclick={addMapping}>
-          Add mapping
-        </button>
-      </div>
-      <div class="row">
-        <button type="button" class="ghost" onclick={() => previewRecreate()} disabled={working}>
-          Preview
-        </button>
-        <button type="button" class="accent" onclick={recreate} disabled={working}>
-          Recreate
-        </button>
-      </div>
-      {#if lastFailures.length}
-        <div class="failures">
-          <p class="label">Failures (first 10)</p>
-          {#each lastFailures.slice(0, 10) as item}
-            <div class="failure-row">{item}</div>
+            <button
+              type="button"
+              class="ghost"
+              onclick={browseScan}
+              disabled={working}>Browse</button
+            ><button class="accent" disabled={working || !scanRoot.trim()}
+              >{working ? "Working…" : "Scan symlinks"}<span>→</span></button
+            >
+          </form>
+        </section>
+        <section class="health-grid" aria-label="Link health filters">
+          {#each ["All", "OK", "Broken", "Unreadable"] as kind}
+            <button
+              class="health-card"
+              class:selected={healthFilter === kind}
+              class:healthy={kind === "OK"}
+              class:broken={kind === "Broken"}
+              class:unreadable={kind === "Unreadable"}
+              onclick={() => (healthFilter = kind)}
+              aria-pressed={healthFilter === kind}
+              ><span class="health-label"
+                ><span class="dot"></span>{kind === "All"
+                  ? "Total links"
+                  : kind === "OK"
+                    ? "Healthy"
+                    : kind}</span
+              ><strong
+                >{kind === "All"
+                  ? scanData.entries.length.toLocaleString()
+                  : health[
+                      /** @type {'OK'|'Broken'|'Unreadable'} */ (kind)
+                    ].toLocaleString()}</strong
+              ></button
+            >
           {/each}
-        </div>
-      {/if}
-      {#if preview.roots.length || preview.sample.length}
-        <div class="preview-grid">
-          <div class="preview bubble">
-            <p class="label">Target roots detected</p>
-              {#each preview.roots as item}
-                <div class="preview-row root-row">
-                  <button
-                    type="button"
-                    class="root-link"
-                    onclick={() => addMappingFromRoot(item.root)}
-                    title="Add to remap rules"
-                  >
-                    {displayPath(item.root)}
-                  </button>
-                  <span class="count">{item.count}</span>
+        </section>
+        <section class="panel results">
+          <div class="toolbar">
+            <label class="search"
+              ><span aria-hidden="true">⌕</span><input
+                aria-label="Search links"
+                placeholder="Search paths, targets, or status…"
+                bind:value={scanQuery}
+              /></label
+            ><span class="search-help"
+              >Comma = OR <span>·</span> −term = exclude</span
+            >{#if scanQuery || healthFilter !== "All"}<button
+                class="text-button"
+                onclick={() => {
+                  scanQuery = "";
+                  healthFilter = "All";
+                }}>Clear filters</button
+              >{/if}<button
+              class="ghost export-button"
+              onclick={exportJson}
+              disabled={working || !filtered.length}
+              >↓ &nbsp; Export JSON</button
+            >
+          </div>
+          <div class="table-wrap" aria-busy={working}>
+            <table>
+              <thead
+                ><tr
+                  >{#each [["relative", "LINK PATH"], ["target", "TARGET DESTINATION"], ["status", "HEALTH"]] as [key, label]}<th
+                      aria-sort={sortKey === key
+                        ? sortDir === "asc"
+                          ? "ascending"
+                          : "descending"
+                        : "none"}
+                      ><button
+                        class="sort"
+                        onclick={() =>
+                          setSort(
+                            /** @type {'relative'|'target'|'status'} */ (key),
+                          )}
+                        >{label}<span
+                          >{sortKey === key
+                            ? sortDir === "asc"
+                              ? "↑"
+                              : "↓"
+                            : "↕"}</span
+                        ></button
+                      ></th
+                    >{/each}</tr
+                ></thead
+              ><tbody
+                >{#each visible as entry}<tr
+                    ><td title={displayPath(entry.relative)}
+                      ><span class="link-glyph" aria-hidden="true">↗</span
+                      >{displayPath(entry.relative)}</td
+                    ><td title={displayPath(entry.target)} class="target-cell"
+                      >{displayPath(entry.target)}</td
+                    ><td
+                      ><span
+                        class="badge"
+                        class:healthy={entry.status === "OK"}
+                        class:broken={entry.status === "Broken"}
+                        class:unreadable={entry.status === "Unreadable"}
+                        ><span class="dot"></span>{entry.status}</span
+                      ></td
+                    ></tr
+                  >{/each}</tbody
+              >
+            </table>
+            {#if !visible.length}<div class="empty-state">
+                <div class="empty-icon" aria-hidden="true">
+                  {scanned ? "⌕" : "↗"}
                 </div>
-              {/each}
+                <h3>
+                  {working
+                    ? "Following your connections…"
+                    : !scanned
+                      ? "Your next connection starts here"
+                      : scanData.entries.length
+                        ? "No matching links"
+                        : "No symbolic links found"}
+                </h3>
+                <p>
+                  {!scanned
+                    ? "Choose a folder above to discover and inspect its symbolic links."
+                    : scanData.entries.length
+                      ? "Try a different search or clear your health filter."
+                      : "Try another folder. Regular files are not included in the inventory."}
+                </p>
+                {#if !scanned}<span class="empty-flow"
+                    >SCAN <span>→</span> INSPECT <span>→</span> EXPORT</span
+                  >{/if}
+              </div>{/if}
           </div>
-          <div class="preview bubble">
-            <p class="label">Preview links</p>
-              {#if preview.root_samples?.length}
-                {#each preview.root_samples as item}
-                  <div class="preview-row two-col">
-                    <span>{displayPath(item.link)}</span>
-                    <span class="muted">-&gt;</span>
-                    <span>{displayPath(item.target)}</span>
-                  </div>
-                {/each}
-              {:else}
-                {#each preview.sample as item}
-                  <div class="preview-row two-col">
-                    <span>{displayPath(item.link)}</span>
-                    <span class="muted">-&gt;</span>
-                    <span>{displayPath(item.target)}</span>
-                  </div>
-                {/each}
-              {/if}
+          <footer class="table-footer">
+            <span
+              >{filtered.length
+                ? Math.min(page, pageCount - 1) * pageSize + 1
+                : 0}–{Math.min(
+                (Math.min(page, pageCount - 1) + 1) * pageSize,
+                filtered.length,
+              )} of {filtered.length.toLocaleString()} links{#if elapsed}
+                <span class="slash">·</span> Scan {elapsed}s{/if}{#if scanData.skipped}
+                <span class="warning">
+                  · {scanData.skipped} skipped</span
+                >{/if}</span
+            >
+            <div class="pagination">
+              <button
+                aria-label="Previous page"
+                disabled={page === 0}
+                onclick={() => page--}>←</button
+              ><span>{Math.min(page + 1, pageCount)} / {pageCount}</span><button
+                aria-label="Next page"
+                disabled={page >= pageCount - 1}
+                onclick={() => page++}>→</button
+              >
+            </div>
+          </footer>
+        </section>
+      {:else}
+        <fieldset class="import-fields" disabled={working}>
+          <div class="import-grid">
+            <section class="panel">
+              <div class="section-label">
+                <span class="step">01</span>
+                <div>
+                  <h2>Load your snapshot</h2>
+                  <p>A JSON export from Symlink Manager.</p>
+                </div>
+              </div>
+              <button class="upload-zone" onclick={loadJson}
+                ><span class="upload-icon">↓</span><strong
+                  >{importName || "Choose a JSON export"}</strong
+                ><span
+                  >{importData
+                    ? importData.entries.length.toLocaleString() +
+                      " links ready to reconnect · Click to change"
+                    : "Browse your files to get started"}</span
+                ></button
+              >
+            </section>
+            <section class="panel">
+              <div class="section-label">
+                <span class="step">02</span>
+                <div>
+                  <h2>Set the destination</h2>
+                  <p>The folder where your new links will live.</p>
+                </div>
+              </div>
+              <label for="target-root">Destination folder</label>
+              <div class="row">
+                <input
+                  id="target-root"
+                  placeholder={osSep === "/"
+                    ? "/home/you/links"
+                    : "D:\\Media\\Links"}
+                  bind:value={dstRoot}
+                /><button class="ghost" onclick={browseTarget}>Browse</button>
+              </div>
+              <p class="hint">
+                The original folder structure is preserved. Target files are not
+                copied.
+              </p>
+            </section>
           </div>
-        </div>
+          <section class="panel mapping-panel" class:has-rules={mappings.length > 0}>
+            <div class="results-heading">
+              <div class="section-label">
+                <span class="step">03</span>
+                <div>
+                  <h2>
+                    Reconnect target paths <span class="optional">OPTIONAL</span
+                    >
+                  </h2>
+                  <p>
+                    Moving drives? Replace a target prefix. The first matching
+                    rule wins.
+                  </p>
+                </div>
+              </div>
+              <button class="ghost" onclick={addMapping}>+ Add rule</button>
+            </div>
+            {#if mappings.length}<div class="mapping-labels">
+                <span>ORIGINAL TARGET PREFIX</span><span>NEW TARGET PREFIX</span>
+              </div>
+              {#each mappings as mapping, index}<div class="mapping-row">
+                  <input
+                    aria-label={"Original prefix, rule " + (index + 1)}
+                    placeholder={osSep === "/" ? "/old/media" : "W:\\Shows"}
+                    bind:value={mapping.from}
+                  /><span class="arrow">→</span><input
+                    aria-label={"New prefix, rule " + (index + 1)}
+                    placeholder={osSep === "/" ? "/mnt/media" : "E:\\Shows"}
+                    bind:value={mapping.to}
+                  /><button
+                    class="remove"
+                    aria-label={"Remove rule " + (index + 1)}
+                    onclick={() => removeMapping(index)}>×</button
+                  >
+                </div>{/each}
+            {/if}
+            {#if incompleteMapping}<p class="warning hint">
+                Complete both prefixes in each rule, or remove the unfinished
+                rule.
+              </p>{/if}
+          </section>
+          <section class="panel preview-panel" aria-busy={previewBusy}>
+            <div class="results-heading">
+              <div class="section-label">
+                <span class="step">04</span>
+                <div><h2>Review the connections</h2></div>
+              </div>
+            </div>
+            {#if previewError}<p class="warning preview-warning" role="alert">
+                {previewError}
+              </p>{/if}
+            {#if preview.roots.length}<div class="preview-grid">
+                <div>
+                  <p class="eyebrow">DETECTED ROOTS · CLICK TO MAP</p>
+                  {#each preview.roots as item}<button
+                      class="root-link"
+                      onclick={() => addMappingFromRoot(item.root)}
+                      ><span>{displayPath(item.root)}</span><span class="count"
+                        >{item.count}</span
+                      ></button
+                    >{/each}
+                </div>
+                <div>
+                  <p class="eyebrow">ONE EXAMPLE PER ROOT</p>
+                  {#each preview.root_samples as item}<div class="preview-link">
+                      <span>{displayPath(item.link)}</span><span
+                        class="preview-target"
+                        >↳ {displayPath(item.target)}</span
+                      >
+                    </div>{/each}
+                </div>
+              </div>{:else}<div class="preview-empty">
+                Load a snapshot and choose a destination to preview your links.
+              </div>{/if}
+          </section>
+          <div class="recreate-bar">
+            <p>
+              <strong>Ready to reconnect?</strong><span
+                >Existing items require confirmation before replacement.</span
+              >
+            </p>
+            <button
+              class="accent"
+              onclick={recreate}
+              disabled={!importData?.entries.length ||
+                !dstRoot.trim() ||
+                previewBusy ||
+                !!previewError ||
+                incompleteMapping}
+              >{working ? "Working…" : "Recreate links"} <span>↗</span></button
+            >
+          </div>
+        </fieldset>
+        {#if lastFailures.length}<section class="panel failures">
+            <h2>{lastFailures.length} links need attention</h2>
+            <p>First 10 errors</p>
+            {#each lastFailures.slice(0, 10) as item}<div>{item}</div>{/each}
+          </section>{/if}
       {/if}
-      </div>
-    </section>
-  {/if}
-
-  {#if confirmOpen}
-    <div class="modal-backdrop" role="dialog" aria-modal="true">
-      <div class="modal">
-        <h3>Replace existing items?</h3>
-        <p class="muted">
-          {confirmData?.total} items already exist in the target folder and will be replaced.
-        </p>
-        {#if (confirmData?.non_symlink ?? 0) > 0}
-          <p class="warning">Includes {confirmData?.non_symlink ?? 0} real files or folders.</p>
-        {/if}
-        {#if confirmData?.sample?.length}
-          <div class="modal-list">
-            {#each confirmData?.sample ?? [] as item}
-              <div class="modal-row">{item}</div>
-            {/each}
-          </div>
-        {/if}
-        <div class="row modal-actions">
-          <button type="button" class="ghost" onclick={() => closeConfirm(false)}>Cancel</button>
-          <button type="button" class="accent" onclick={() => closeConfirm(true)}>Replace and recreate</button>
-        </div>
-      </div>
     </div>
-  {/if}
-
-  {#if resultOpen}
-    <div class="modal-backdrop" role="dialog" aria-modal="true">
-      <div class="modal">
-        <h3>{resultKind === "export" ? "Export Complete" : "Import Complete"}</h3>
-        <p class="muted">
-          {resultKind === "export" ? "Export completed." : "Recreate complete."}
-        </p>
-        <div class="result-grid">
-          <div>{resultKind === "export" ? "Exported" : "Created"}</div>
-          <div>{resultData?.created ?? 0}</div>
-          <div>{resultKind === "export" ? "Failed" : "Failed"}</div>
-          <div>{resultData?.failed ?? 0}</div>
-        </div>
-        {#if resultData?.sample_links?.length}
-          <div class="modal-list">
-            {#each resultData?.sample_links ?? [] as item}
-              <div class="modal-row">{item}</div>
-            {/each}
-          </div>
-        {/if}
-        <div class="row modal-actions">
-          <button type="button" class="accent" onclick={closeResult}>OK</button>
-        </div>
-      </div>
-    </div>
-  {/if}
-
-  <div class="status-bubble">
-    <span>{status}</span>
+    <footer class="statusbar" role="status" aria-live="polite">
+      <span class="dot" class:pulse={working}></span><span
+        >{status ||
+          "Ready when you are. Choose a folder or load a snapshot."}</span
+      ><span class="status-end">SYMLINK MANAGER</span>
+    </footer>
   </div>
+  {#if confirmOpen}<dialog
+      use:showDialog
+      oncancel={(/** @type {Event} */ e) => {
+        e.preventDefault();
+        closeConfirm(false);
+      }}
+      aria-labelledby="confirm-title"
+    >
+      <span class="dialog-icon warning">↻</span>
+      <h2 id="confirm-title">Replace existing items?</h2>
+      <p>
+        {confirmData?.total} destination items already exist and will be replaced.
+      </p>
+      {#if (confirmData?.non_symlink ?? 0) > 0}<p class="warning">
+          Includes {confirmData?.non_symlink} real files or folders. Non-empty folders
+          will be preserved.
+        </p>{/if}
+      <div class="modal-list">
+        {#each confirmData?.sample ?? [] as item}<div>
+            {displayPath(item)}
+          </div>{/each}
+      </div>
+      <div class="modal-actions">
+        <button class="ghost" onclick={() => closeConfirm(false)}>Cancel</button
+        ><button class="danger" onclick={() => closeConfirm(true)}
+          >Replace & recreate</button
+        >
+      </div>
+    </dialog>{/if}
+  {#if resultOpen}<dialog
+      use:showDialog
+      oncancel={closeResult}
+      aria-labelledby="result-title"
+    >
+      <span class="dialog-icon">{resultData?.failed ? "!" : "✓"}</span>
+      <h2 id="result-title">
+        {resultKind === "export" ? "Snapshot saved" : "Recreation complete"}
+      </h2>
+      <p>
+        {resultKind === "export"
+          ? "Your connections are ready to travel."
+          : "Review the results of your operation below."}
+      </p>
+      <div class="result-summary">
+        <div>
+          <strong>{resultData?.created ?? 0}</strong><span
+            >{resultKind === "export" ? "Exported" : "Created"}</span
+          >
+        </div>
+        <div><strong>{resultData?.failed ?? 0}</strong><span>Failed</span></div>
+      </div>
+      <div class="modal-list">
+        {#each resultData?.sample_links ?? [] as item}<div>
+            {displayPath(item)}
+          </div>{/each}
+      </div>
+      <div class="modal-actions">
+        <button class="accent" onclick={closeResult}>Done</button>
+      </div>
+    </dialog>{/if}
 </main>
 
 <style>
   :global(:root) {
-    --bg: #141312;
-    --panel: rgba(20, 20, 22, 0.88);
-    --panel-strong: rgba(28, 28, 32, 0.96);
-    --ink: #f5f3f0;
-    --muted: #b1aba3;
-    --accent: #f26430;
-    --accent-strong: #ff9b73;
-    --ok: #27f178;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    color: #e7e8f0;
+    background: #101116;
     color-scheme: dark;
+    font-synthesis: none;
+    --muted: #9699a9;
+    --line: #2d3040;
+    --accent: #91a4ff;
   }
-
+  :global(*) {
+    box-sizing: border-box;
+  }
   :global(body) {
     margin: 0;
-    font-family: "Space Grotesk", "IBM Plex Sans", "Segoe UI", sans-serif;
-    background: var(--bg);
-    color: var(--ink);
-    overflow-y: scroll;
   }
-
-  .app {
-    min-height: 100vh;
-    padding: 32px 32px 64px;
-    box-sizing: border-box;
-    background:
-      radial-gradient(circle at 15% 20%, rgba(255, 155, 115, 0.15), transparent 55%),
-      radial-gradient(circle at 80% 5%, rgba(242, 100, 48, 0.18), transparent 45%),
-      linear-gradient(160deg, rgba(20, 19, 18, 0.9) 0%, rgba(10, 10, 10, 0.98) 100%);
-    position: relative;
-    overflow: hidden;
+  :global(button),
+  :global(input) {
+    font: inherit;
   }
-
-  .app::before {
-    content: "";
-    position: absolute;
-    inset: -20% 10% auto auto;
-    width: 480px;
-    height: 480px;
-    background: radial-gradient(circle, rgba(255, 155, 115, 0.25), transparent 60%);
-    filter: blur(10px);
-    opacity: 0.6;
-    pointer-events: none;
-  }
-
-  .hero {
-    display: flex;
-    justify-content: space-between;
-    gap: 32px;
-    align-items: flex-start;
-    margin-bottom: 28px;
-    animation: rise 0.6s ease both;
-  }
-
-  .hero-title {
-    margin: 0 0 12px;
-    font-size: clamp(38px, 5vw, 56px);
-    color: var(--accent);
-  }
-
-  .subtitle {
-    max-width: 520px;
-    color: var(--muted);
-    margin: 0;
-  }
-
-  .stats {
-    display: grid;
-    gap: 12px;
-    min-width: 240px;
-    background: var(--panel);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    padding: 16px;
-    border-radius: 16px;
-    backdrop-filter: blur(12px);
-  }
-
-  .stats > div {
-    text-align: center;
-  }
-
-  .stats-row {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 14px;
-  }
-
-  .stats-row > div {
-    text-align: center;
-  }
-
-  .stat-sep {
-    width: 1px;
-    height: 26px;
-    background: rgba(255, 255, 255, 0.12);
-    flex: 0 0 1px;
-  }
-
-  .stats .label {
-    display: block;
-    font-size: 12px;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-  }
-
-  .stats .value {
-
-    font-size: 14px;
-    word-break: break-all;
-  }
-
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: 20px;
-    margin-bottom: 24px;
-  }
-
-  .tabs {
-    display: inline-flex;
-    gap: 8px;
-    padding: 6px;
-    border-radius: 999px;
-    background: rgba(20, 20, 22, 0.7);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    margin-bottom: 20px;
-  }
-
-  .tabs button {
-    border-radius: 999px;
-    padding: 8px 18px;
-    background: transparent;
-    color: var(--muted);
-    border: 1px solid transparent;
-    font-weight: 600;
-  }
-
-  .tabs button.active {
-    background: var(--accent);
-    color: #1b0f0a;
-    border-color: transparent;
-  }
-
-  .panel {
-    background: var(--panel);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 18px;
-    padding: 20px;
-    backdrop-filter: blur(12px);
-  }
-
-  .panel-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 16px;
-  }
-
-  .panel-header h2 {
-    margin: 0;
-    font-size: 20px;
-  }
-
-  .search-input {
-    flex: 0 0 300px !important;
-    width: 300px !important;
-    max-width: 300px;
-    background: var(--panel-strong);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    color: var(--ink);
-    padding: 8px 12px;
-    border-radius: 999px;
-    font-size: 13px;
-  }
-
-  .search-input:focus {
-    outline: 1px solid var(--accent);
-  }
-
-  .muted {
-    color: var(--muted);
-  }
-
-  .field {
-    margin-bottom: 16px;
-  }
-
-  .field label,
-  .field .field-label {
-    display: block;
-    font-size: 13px;
-    margin-bottom: 8px;
-    color: var(--muted);
-  }
-
-  .field-gap {
-    margin-top: 8px;
-  }
-
-  input[type="text"] {
-    flex: 1;
-    background: var(--panel-strong);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    color: var(--ink);
-    padding: 10px 12px;
-    border-radius: 10px;
-    font-size: 14px;
-  }
-
-  input[type="text"]:focus {
-    outline: 1px solid var(--accent);
-  }
-
-  .row {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    flex-wrap: wrap;
-  }
-
-  button {
-    border: none;
-    border-radius: 10px;
-    padding: 10px 14px;
-    font-family: inherit;
-    font-size: 14px;
+  :global(button) {
     cursor: pointer;
-    transition: transform 0.2s ease, background 0.2s ease, opacity 0.2s ease;
   }
-
-  button:disabled {
-    opacity: 0.5;
+  :global(button:disabled) {
+    opacity: 0.4;
     cursor: not-allowed;
   }
-
-  button.accent {
-    background: var(--accent);
-    color: #1b0f0a;
+  :global(button:focus-visible),
+  :global(a:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: 4px;
+  }
+  :global(input:focus) {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px #91a4ff1a;
+  }
+  :global(::selection) {
+    background: #4b5794;
+    color: white;
+  }
+  :global(::-webkit-scrollbar) {
+    width: 8px;
+    height: 8px;
+  }
+  :global(::-webkit-scrollbar-thumb) {
+    background: #404354;
+    border-radius: 8px;
+  }
+  .app {
+    min-height: 100vh;
+  }
+  .sidebar {
+    width: 228px;
+    position: fixed;
+    inset: 0 auto 0 0;
+    padding: 30px 18px 20px;
+    background: #151620;
+    border-right: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    z-index: 2;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-decoration: none;
+    color: #f1f2f8;
+    font-size: 23px;
+    font-weight: 650;
+    letter-spacing: -0.7px;
+    padding: 0 10px;
+  }
+  .brand img {
+    width: 42px;
+    height: 42px;
+  }
+  .brand-sub {
+    display: block;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 3.2px;
+    color: var(--muted);
+    margin-top: 1px;
+  }
+  .nav-label {
+    font-size: 10px;
+    letter-spacing: 1.6px;
+    color: #777c91;
+    margin: 48px 14px 14px;
+  }
+  nav {
+    display: grid;
+    gap: 8px;
+  }
+  nav button {
+    display: flex;
+    text-align: left;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 12px;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    background: none;
+    color: #b0b3c2;
+    font-size: 13px;
     font-weight: 600;
   }
-
-  button.accent:hover {
-    transform: translateY(-1px);
-    background: var(--accent-strong);
+  nav button.active {
+    background: #91a4ff0d;
+    border-color: #91a4ff2b;
+    color: var(--accent);
   }
-
-  button.ghost {
-    background: transparent;
-    color: var(--ink);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+  nav small {
+    display: block;
+    font-size: 10px;
+    font-weight: 400;
+    margin-top: 5px;
+    color: #858a9f;
   }
-
-  button.ghost:hover {
-    border-color: var(--accent);
-  }
-
-  button.small {
-    padding: 6px 10px;
-    font-size: 12px;
-  }
-
-  button.remove {
-    width: 26px;
-    height: 26px;
-    padding: 0;
-    border-radius: 50%;
-    font-weight: 700;
+  .nav-icon {
+    font-size: 25px;
     line-height: 1;
+  }
+  .platform {
+    margin-top: auto;
+    border-top: 1px solid var(--line);
+    padding: 16px 10px 0;
+    text-align: center;
+    font-size: 10px;
+    letter-spacing: 0.8px;
+    color: #777c91;
+  }
+  .dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    background: currentColor;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .workspace {
+    margin-left: 228px;
+    min-width: 0;
+  }
+  .content {
+    padding: 24px 36px 52px;
+    max-width: 1600px;
+    margin: auto;
+  }
+  .page-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 18px;
+  }
+  .eyebrow {
+    font-size: 9px;
+    letter-spacing: 1.8px;
+    color: var(--accent);
+    font-weight: 600;
+    margin: 0 0 10px;
+  }
+  h1 {
+    font-size: 32px;
+    letter-spacing: -1.1px;
+    line-height: 1.2;
+    margin: 0;
+    font-weight: 600;
+  }
+  .subtitle {
+    font-size: 12px;
+    color: var(--muted);
+    margin: 8px 0 0;
+    line-height: 1.6;
+  }
+  .heading-symbol {
+    font-size: 58px;
+    font-weight: 200;
+    color: #4b5687;
+    margin-right: 12px;
+  }
+  .panel {
+    background: #181923;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px 20px;
+  }
+  h2 {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.15px;
+    margin: 0;
+  }
+  p {
+    line-height: 1.6;
+  }
+  .section-label {
+    display: flex;
+    gap: 13px;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+  .step {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: 1px solid #474e7c;
+    border-radius: 8px;
+    font-size: 11px;
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+  .section-label p,
+  .results-heading p {
+    font-size: 11px;
+    color: var(--muted);
+    margin: 5px 0 0;
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .row input {
+    flex: 1;
+    min-width: 0;
+  }
+  .path-input {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    position: relative;
+  }
+  .path-input > span {
+    position: absolute;
+    left: 14px;
+    color: #969aad;
+    font-size: 20px;
+  }
+  .path-input input {
+    padding-left: 42px;
+    width: 100%;
+  }
+  input {
+    background: #11121a;
+    color: #e0e1eb;
+    border: 1px solid #363949;
+    border-radius: 7px;
+    padding: 11px 13px;
+    font-size: 12px;
+    min-width: 0;
+    transition: border-color 0.15s;
+  }
+  input::placeholder {
+    color: #757a90;
+  }
+  button {
+    border-radius: 7px;
+    border: 1px solid transparent;
+    padding: 10px 15px;
+    font-size: 12px;
+    transition:
+      background 0.15s,
+      color 0.15s;
+  }
+  .accent {
+    background: var(--accent);
+    color: #171a31;
+    font-weight: 650;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    gap: 24px;
   }
-
-  button.remove svg {
-    width: 14px;
-    height: 14px;
+  .accent:hover:not(:disabled) {
+    background: #aab8ff;
   }
-
-  .hint {
-    font-size: 12px;
-    color: var(--muted);
-    margin: -6px 0 10px;
+  .ghost {
+    background: #1c1e2b;
+    border-color: #414456;
+    color: #dcdeea;
+    white-space: nowrap;
   }
-
-  .mapping-row {
-    align-items: center;
+  .ghost:hover:not(:disabled) {
+    background: #292d40;
+    border-color: #606994;
   }
-
-  .mapping-row .arrow {
-    color: var(--accent);
-    font-size: 18px;
-  }
-
-  .add-mapping {
-    margin-top: 8px;
-  }
-
-  .preview {
-    margin-top: 16px;
-    padding-top: 12px;
+  .health-grid {
     display: grid;
-    gap: 6px;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin: 14px 0;
   }
-
-  .preview.bubble {
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 14px;
-    padding: 12px 14px;
-    background: rgba(20, 20, 22, 0.6);
-  }
-
-  .preview-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 16px;
-  }
-
-  .failures {
-    margin-top: 16px;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
-    padding-top: 12px;
-    display: grid;
-    gap: 6px;
-    font-size: 12px;
-    color: #ff6b6b;
-    word-break: break-all;
-  }
-
-  .failure-row {
-    background: rgba(255, 107, 107, 0.08);
-    border: 1px solid rgba(255, 107, 107, 0.2);
-    border-radius: 8px;
-    padding: 8px 10px;
-  }
-
-  .preview-row {
-    display: grid;
-  .root-row {
-    align-items: center;
-  }
-
-  .root-link {
-    background: transparent;
-    border: none;
-    color: var(--ink);
+  .health-card {
+    background: #181923;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 13px 18px;
     text-align: left;
-    padding: 0;
-    font: inherit;
-    cursor: pointer;
-    word-break: break-all;
+    position: relative;
+    color: #c8cad7;
   }
-
-  .root-link:hover {
-    color: var(--accent);
+  .health-card.selected {
+    border-color: #6b75ad;
+    background: #202237;
   }
-
-    grid-template-columns: 1fr auto;
-    gap: 12px;
-    font-size: 12px;
-    color: var(--ink);
-    word-break: break-all;
-  }
-
-  .preview-row .count {
-    color: var(--muted);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .preview-row.two-col {
-    grid-template-columns: 1fr auto 1fr;
+  .health-label {
+    font-size: 11px;
+    display: flex;
+    align-items: center;
     gap: 8px;
   }
-
-  .table-panel {
-    padding-bottom: 12px;
+  .health-card strong {
+    display: block;
+    font-size: 29px;
+    font-weight: 550;
+    letter-spacing: -1px;
+    margin: 6px 0 0;
+    color: #f0f1f8;
+    font-variant-numeric: tabular-nums;
   }
-
-  .table-wrap {
-    max-height: 500px;
-    overflow: auto;
-    border-radius: 12px;
+  .healthy {
+    color: #83e3be;
   }
-
-  table {
+  .broken {
+    color: #ef929a;
+  }
+  .unreadable,
+  .warning {
+    color: #e9bb78;
+  }
+  .results {
+    padding: 0;
+    overflow: hidden;
+  }
+  .results-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+  }
+  .results-heading > div {
+    min-width: 0;
+  }
+  .results-heading p {
+    overflow-wrap: anywhere;
+  }
+  .count {
+    font-size: 10px;
+    background: #292d47;
+    color: #bec4de;
+    padding: 3px 7px;
+    border-radius: 5px;
+    margin-left: 8px;
+    font-weight: 500;
+  }
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    border-bottom: 1px solid var(--line);
+    padding: 12px 22px;
+    background: #151620;
+  }
+  .search {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+  }
+  .search > span {
+    font-size: 22px;
+    color: #7d839d;
+  }
+  .search input {
+    background: transparent;
+    padding: 6px 0;
+    border: none;
+    box-shadow: none;
     width: 100%;
+    font-size: 11px;
+  }
+  .search:focus-within {
+    outline: 1px solid var(--accent);
+    outline-offset: 5px;
+    border-radius: 3px;
+  }
+  .search-help {
+    font-size: 10px;
+    color: #81869f;
+    white-space: nowrap;
+  }
+  .search-help > span {
+    margin: 0 6px;
+  }
+  .text-button {
+    background: none;
+    color: var(--accent);
+    padding: 0;
+    font-size: 10px;
+  }
+  .export-button {
+    margin-left: auto;
+  }
+  .table-wrap {
+    overflow: auto;
+    max-height: min(620px, calc(100vh - 500px));
+    min-height: min(260px, calc(100vh - 500px));
+  }
+  table {
     border-collapse: collapse;
-    font-size: 13px;
+    width: 100%;
     table-layout: fixed;
   }
-
-  th,
-  td {
-    padding: 10px 12px;
-    text-align: left;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    vertical-align: top;
-  }
-
   th {
     position: sticky;
     top: 0;
-    background: rgba(20, 20, 22, 0.96);
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    padding: 0;
+    background: #20212d;
+    z-index: 1;
+    text-align: left;
   }
-
+  th:first-child {
+    width: 46%;
+  }
+  th:nth-child(2) {
+    width: 46%;
+  }
+  th:last-child {
+    width: 8%;
+    min-width: 84px;
+    text-align: right;
+  }
   .sort {
+    background: none;
+    color: #9599ac;
+    padding: 12px 22px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
     width: 100%;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background: transparent;
-    border: none;
-    color: var(--ink);
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    padding: 10px 12px;
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.8px;
+    white-space: nowrap;
   }
-
-  .sort:hover {
-    color: var(--accent);
+  .sort span {
+    color: #686f8d;
   }
-
-  .caret {
-    font-size: 10px;
-    color: var(--accent);
-  }
-
-  tr.broken td {
-    color: #ff6b6b;
-  }
-
-  tr.unreadable td {
-    color: #ffb36b;
-  }
-
-  .status-dot {
-    display: inline-block;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    box-shadow: 0 0 10px rgba(39, 241, 120, 0.5);
-    flex-shrink: 0;
-  }
-
-  .status-dot.ok {
-    background: #27f178;
-    box-shadow: 0 0 10px rgba(39, 241, 120, 0.6);
-  }
-
-  .status-dot.bad {
-    background: #ff6b6b;
-    box-shadow: 0 0 10px rgba(255, 107, 107, 0.5);
-  }
-
-  .status-dot.warn {
-    background: #ffb36b;
-    box-shadow: 0 0 10px rgba(255, 179, 107, 0.5);
-  }
-
-  .target-text,
-  td {
-    word-break: break-word;
-    white-space: normal;
-  }
-
-  th:first-child,
-  td:first-child {
-    width: 42%;
-  }
-
-  th:nth-child(2),
-  td:nth-child(2) {
-    width: 52%;
-  }
-
-  th:last-child,
-  td:last-child {
-    width: 6%;
-    text-align: right;
-  }
-
-  .status-cell {
-    text-align: right;
-    vertical-align: middle;
-  }
-
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(8, 8, 8, 0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 30;
-  }
-
-  .modal {
-    width: min(92vw, 520px);
-    background: var(--panel-strong);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 16px;
-    padding: 18px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
-  }
-
-  .modal h3 {
-    margin: 0 0 10px;
-    font-size: 18px;
-  }
-
-  .modal p {
-    margin: 0 0 10px;
-  }
-
-  .modal-list {
-    margin: 8px 0 12px;
-    max-height: 180px;
-    overflow: auto;
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(10, 10, 12, 0.6);
-    padding: 10px;
-    font-size: 12px;
-    color: var(--ink);
-  }
-
-  .modal-row {
-    padding: 4px 0;
-    word-break: break-all;
-  }
-
-  .modal-actions {
+  th:last-child .sort {
     justify-content: flex-end;
   }
-
-  .result-grid {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 6px 16px;
-    margin: 10px 0 12px;
-    font-size: 13px;
-  }
-
-  .result-grid div:nth-child(odd) {
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+  td {
+    font-family: Consolas, "Cascadia Code", monospace;
     font-size: 11px;
+    color: #d0d2df;
+    padding: 13px 22px;
+    border-bottom: 1px solid #292d3c;
+    overflow-wrap: anywhere;
+    vertical-align: top;
+    line-height: 1.7;
   }
-
-  .warning {
-    color: #ffb36b;
+  tr:hover td {
+    background: #242738;
   }
-
-  .status-bubble {
-    position: fixed;
-    left: 50%;
-    transform: translateX(-50%);
-    bottom: 18px;
-    padding: 8px 12px;
-    font-size: 12px;
-    color: var(--muted);
-    background: rgba(20, 20, 22, 0.85);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 999px;
-    backdrop-filter: blur(12px);
-    z-index: 20;
-    max-width: 55%;
+  .target-cell {
+    color: #8d92a8;
+  }
+  .link-glyph {
+    margin-right: 9px;
+    color: #8189aa;
+  }
+  .badge {
+    font:
+      10px "Segoe UI",
+      sans-serif;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 7px;
+    border-radius: 5px;
+    background: #7983ac0b;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    border: 1px solid #7983ac20;
   }
-
-  .lift-1 {
-    animation: rise 0.7s ease 0.1s both;
+  td:last-child {
+    text-align: right;
   }
-
-  .lift-2 {
-    animation: rise 0.7s ease 0.2s both;
+  .empty-state {
+    text-align: center;
+    padding: 38px 20px 32px;
   }
-
-  .lift-3 {
-    animation: rise 0.7s ease 0.3s both;
+  .empty-icon {
+    font-size: 30px;
+    color: var(--accent);
+    margin: 0 auto 18px;
+    background: #91a4ff08;
+    border: 1px solid #91a4ff20;
+    border-radius: 14px;
+    width: 55px;
+    height: 55px;
+    display: grid;
+    place-items: center;
   }
-
-  @keyframes rise {
-    from {
-      opacity: 0;
-      transform: translateY(12px);
-    }
+  .empty-state h3 {
+    font-size: 15px;
+    font-weight: 500;
+    margin: 0 0 8px;
+  }
+  .empty-state p {
+    font-size: 11px;
+    color: #8c91a6;
+    margin: 0;
+  }
+  .empty-flow {
+    display: inline-flex;
+    gap: 15px;
+    font-size: 8px;
+    letter-spacing: 1.7px;
+    color: #787f99;
+    margin-top: 26px;
+  }
+  .empty-flow > span {
+    color: #525d91;
+  }
+  .table-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 11px 22px;
+    font-size: 10px;
+    color: #8e93a9;
+    border-top: 1px solid var(--line);
+  }
+  .pagination {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+  .pagination button {
+    background: #242738;
+    color: #d1d3e1;
+    border-color: #393d51;
+    padding: 4px 10px;
+  }
+  .statusbar {
+    position: fixed;
+    bottom: 0;
+    left: 228px;
+    right: 0;
+    min-height: 34px;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 9px 25px;
+    border-top: 1px solid var(--line);
+    background: #151620;
+    font-size: 10px;
+    color: #9599aa;
+    z-index: 3;
+  }
+  .statusbar > .dot {
+    color: var(--accent);
+  }
+  .statusbar > span:nth-child(2) {
+    overflow-wrap: anywhere;
+  }
+  .status-end {
+    margin-left: auto;
+    font-size: 8px;
+    letter-spacing: 1.3px;
+    white-space: nowrap;
+    color: #686f8d;
+  }
+  .pulse {
+    animation: pulse 1s infinite alternate;
+  }
+  @keyframes pulse {
     to {
-      opacity: 1;
-      transform: translateY(0);
+      opacity: 0.2;
     }
   }
-
-  @media (max-width: 900px) {
-    .hero {
-      flex-direction: column;
+  .import-fields {
+    border: 0;
+    padding: 0;
+    margin: 0;
+    min-width: 0;
+  }
+  .import-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin-bottom: 18px;
+  }
+  .upload-zone {
+    background: #171825;
+    border: 1px dashed #515b8c;
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+    gap: 5px;
+    width: 100%;
+    padding: 12px;
+    color: #d8dae7;
+  }
+  .upload-icon {
+    font-size: 18px;
+    color: var(--accent);
+  }
+  .upload-zone strong {
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+  .upload-zone > span:last-child {
+    font-size: 10px;
+    color: #878da7;
+  }
+  .import-grid .section-label {
+    margin-bottom: 14px;
+  }
+  .import-grid label {
+    display: block;
+    font-size: 11px;
+    color: #bec2d4;
+    margin: 14px 0 8px;
+  }
+  .hint {
+    font-size: 10px;
+    color: #8e94aa;
+    margin: 15px 0 0;
+  }
+  .import-grid .hint {
+    margin-top: 10px;
+  }
+  .mapping-panel {
+    margin-bottom: 18px;
+    padding-block: 12px;
+  }
+  .mapping-panel.has-rules {
+    padding-block: 16px;
+  }
+  .mapping-panel .results-heading {
+    padding: 0;
+    margin-bottom: 0;
+  }
+  .mapping-panel.has-rules .results-heading {
+    margin-bottom: 22px;
+  }
+  .mapping-panel .section-label {
+    margin: 0;
+  }
+  .optional {
+    font-size: 8px;
+    letter-spacing: 1px;
+    color: #8b91a8;
+    margin-left: 8px;
+  }
+  .mapping-labels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 38px;
+    padding-right: 40px;
+    font-size: 8px;
+    letter-spacing: 1px;
+    color: #7f86a0;
+    margin-bottom: 9px;
+  }
+  .mapping-row {
+    display: grid;
+    grid-template-columns: 1fr 18px 1fr 30px;
+    gap: 10px;
+    margin-top: 8px;
+    align-items: center;
+  }
+  .arrow {
+    color: var(--accent);
+    text-align: center;
+  }
+  .remove {
+    padding: 2px;
+    background: transparent;
+    color: #b5b9cd;
+    font-size: 22px;
+  }
+  .remove:hover {
+    color: #ef929a;
+  }
+  .preview-panel {
+    padding: 0;
+    overflow: hidden;
+  }
+  .preview-panel .results-heading {
+    padding: 16px 20px;
+  }
+  .preview-panel .section-label {
+    margin: 0;
+  }
+  .preview-grid {
+    display: grid;
+    grid-template-columns: 1fr 1.5fr;
+    gap: 25px;
+    padding: 20px 22px;
+    border-top: 1px solid var(--line);
+    max-height: 360px;
+    overflow: auto;
+  }
+  .preview-grid .eyebrow {
+    color: #9095aa;
+    font-size: 8px;
+  }
+  .root-link {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    padding: 10px 0;
+    border-bottom: 1px solid #303449;
+    border-radius: 0;
+    background: none;
+    color: #ced1e0;
+    text-align: left;
+    font-size: 11px;
+    overflow-wrap: anywhere;
+  }
+  .root-link:hover {
+    color: var(--accent);
+  }
+  .preview-link {
+    display: grid;
+    gap: 5px;
+    padding: 10px 0;
+    border-bottom: 1px solid #303449;
+    font:
+      10px Consolas,
+      monospace;
+    overflow-wrap: anywhere;
+  }
+  .preview-target {
+    color: var(--accent);
+  }
+  .preview-empty {
+    padding: 30px;
+    text-align: center;
+    border-top: 1px solid var(--line);
+    font-size: 12px;
+    color: #878da5;
+  }
+  .preview-warning {
+    margin: 0;
+    padding: 10px 22px 0;
+    font-size: 10px;
+  }
+  .recreate-bar {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    align-items: center;
+    padding: 22px 0;
+  }
+  .recreate-bar p {
+    margin: 0;
+  }
+  .recreate-bar strong {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .recreate-bar p span {
+    display: block;
+    font-size: 10px;
+    color: #9398aa;
+    margin-top: 5px;
+  }
+  .failures {
+    color: #ef929a;
+    font-size: 11px;
+    overflow-wrap: anywhere;
+  }
+  .failures > div {
+    padding: 8px 0;
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+  }
+  dialog {
+    background: #1f2130;
+    color: #e7e8f1;
+    border: 1px solid #535b84;
+    border-radius: 16px;
+    padding: 28px;
+    width: min(520px, 90vw);
+    max-height: 85vh;
+    overflow: auto;
+    box-shadow: 0 30px 100px #0009;
+  }
+  dialog::backdrop {
+    background: #080912bf;
+    backdrop-filter: blur(4px);
+  }
+  dialog h2 {
+    font-size: 22px;
+    margin: 16px 0 10px;
+  }
+  dialog p {
+    font-size: 12px;
+    color: #b2b6c8;
+  }
+  .dialog-icon {
+    font-size: 28px;
+    color: var(--accent);
+  }
+  .modal-list {
+    max-height: 180px;
+    overflow: auto;
+    font:
+      11px Consolas,
+      monospace;
+    background: #151722;
+    border-radius: 7px;
+    margin: 16px 0;
+    padding: 12px;
+    overflow-wrap: anywhere;
+  }
+  .modal-list > div {
+    padding: 5px 0;
+  }
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
+  }
+  .danger {
+    background: #edaaa9;
+    color: #381515;
+    font-weight: 600;
+  }
+  .result-summary {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    padding: 20px;
+    background: #151722;
+    border-radius: 9px;
+  }
+  .result-summary strong {
+    display: block;
+    font-size: 28px;
+    color: var(--accent);
+  }
+  .result-summary span {
+    font-size: 11px;
+    color: #b2b6c8;
+  }
+  @media (min-width: 1500px) {
+    .content {
+      padding-top: 40px;
     }
-
-    .stats {
-      width: 100%;
+  }
+  @media (max-width: 1100px) {
+    .sidebar {
+      width: 190px;
+      padding-inline: 12px;
+    }
+    .workspace {
+      margin-left: 190px;
+    }
+    .statusbar {
+      left: 190px;
+    }
+    .content {
+      padding: 24px 22px 65px;
+    }
+    .search-help {
+      display: none;
+    }
+    .health-card {
+      padding: 15px;
+    }
+    th:first-child {
+      width: 44%;
+    }
+    th:nth-child(2) {
+      width: 44%;
+    }
+    th:last-child {
+      width: 12%;
+    }
+    .sort,
+    td {
+      padding: 12px 14px;
+    }
+    .brand {
+      font-size: 21px;
+      gap: 8px;
+    }
+    .brand img {
+      width: 36px;
+    }
+  }
+  @media (max-width: 760px) {
+    .sidebar {
+      position: static;
+      width: auto;
+      padding: 15px;
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .brand-sub,
+    .nav-label,
+    .platform,
+    nav small,
+    .nav-icon {
+      display: none;
+    }
+    nav {
+      display: flex;
+    }
+    nav button {
+      padding: 10px;
+      font-size: 11px;
+    }
+    .brand {
+      font-size: 17px;
+    }
+    .brand img {
+      width: 28px;
+      height: 28px;
+    }
+    .workspace {
+      margin-left: 0;
+    }
+    .statusbar {
+      left: 0;
+    }
+    .status-end,
+    .heading-symbol,
+    .content {
+      padding: 22px 16px 70px;
+    }
+    h1 {
+      font-size: 27px;
+    }
+    .health-grid {
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .row {
+      flex-wrap: wrap;
+    }
+    .path-input {
+      flex-basis: 100%;
+    }
+    .scan-control .row > .accent {
+      flex: 1;
+    }
+    .import-grid {
+      grid-template-columns: 1fr;
+    }
+    .preview-grid {
+      grid-template-columns: 1fr;
+    }
+    .table-wrap table {
+      min-width: 610px;
+    }
+    .results-heading {
+      padding: 17px;
+    }
+    .mapping-labels {
+      display: none;
+    }
+    .mapping-row {
+      grid-template-columns: 1fr 18px 1fr 24px;
+      gap: 5px;
+    }
+    .panel {
+      padding: 17px;
+    }
+    .mapping-panel {
+      padding-block: 12px;
+    }
+    .mapping-panel.has-rules {
+      padding-block: 16px;
+    }
+    .results,
+    .preview-panel {
+      padding: 0;
+    }
+    .recreate-bar {
+      align-items: flex-start;
+    }
+    .recreate-bar .accent {
+      gap: 10px;
+      white-space: nowrap;
+    }
+  }
+  @media (min-width: 761px) and (max-height: 800px) {
+    .content {
+      padding-top: 20px;
+    }
+    .page-heading {
+      margin-bottom: 18px;
+    }
+    h1 {
+      font-size: 28px;
+    }
+    .subtitle {
+      margin-top: 8px;
+    }
+    .health-grid {
+      margin: 16px 0;
+    }
+    .health-card {
+      padding: 13px 18px;
+    }
+    .health-card strong {
+      font-size: 26px;
+      margin: 5px 0;
+    }
+    .empty-state {
+      padding: 24px 20px;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pulse {
+      animation: none;
+    }
+    :global(*) {
+      transition: none !important;
     }
   }
 </style>
-
-
-
-

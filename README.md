@@ -1,111 +1,57 @@
-# Symlink Manager
+<p align="center">
+  <img src="assets/icon.svg" width="72" alt="Symlink Manager logo">
+</p>
 
-Symlink Manager is a portable desktop app for backing up and recreating symbolic links.
+<h1 align="center">Symlink Manager</h1>
 
-It is useful when you move a media library, migrate between drives, rebuild a machine, or need to recreate a group of links on another Windows or Linux setup. The app scans a folder, finds symlinks, exports them to JSON, then recreates them later with optional root remapping.
+<p align="center">Discover, preserve, and reconnect symbolic links.</p>
 
-## What It Does
+Symlink Manager is a portable desktop app for scanning, exporting, and recreating symbolic links when a library moves, drives change, or a machine is rebuilt. It preserves link locations and targets—it never copies the target files.
 
-- Scans a folder tree and finds symbolic links.
-- Shows whether each target is OK, Broken, or Unreadable.
-- Exports the scan result to a JSON file.
-- Imports a previous JSON export.
-- Recreates symlinks in another destination folder.
-- Remaps target roots, for example from a Windows drive to a Linux mount path.
-- Warns before replacing existing items.
-- Requests admin elevation on Windows when symlink creation needs it.
+![Scan & export workspace](assets/screenshot-scan.png)
 
-## Portable App
+## Scan, inspect, export
 
-Symlink Manager is meant to be used as a portable app.
+Choose a folder to discover its symbolic links and verify each target. **Healthy** links are accessible, **Broken** targets are missing, and **Unreadable** links or targets could not be verified. A separate skipped count reports traversal errors.
 
-Download the release file for your operating system, place it wherever you want, and launch it directly. No project setup is required to use the app.
+Filter by health, search paths, targets, or status, and browse the compact 100-row pages. Search supports comma-separated OR terms and `-term` exclusions. **Export JSON** saves every matching result, across all pages, as a portable snapshot.
 
-## Supported Platforms
+The 1.1.0 scan runs off the UI thread with bounded concurrency and shared target metadata. A local 3,000-junction fixture measured about **2.4× faster** scanning; see [AUDIT.md](AUDIT.md) for methodology and limitations.
 
-- Windows: tested and supported.
-- Linux: tested and supported.
-- macOS: not tested.
+## Import and recreate
 
-On Windows, creating symlinks may require Developer Mode or administrator rights. If Windows blocks symlink creation, the app can ask for elevation.
+Load an export, choose the new link destination, then review the automatically updated preview. Optional root mappings reconnect moved targets—for example, `W:\Shows` to `/mnt/media/shows`; the first matching rule wins.
 
-On Linux, the app needs normal write permissions in the destination folder. If the Linux file does not start by double-clicking, open its file properties and allow it to run as a program.
+Imported paths and destinations are validated before work begins. Existing items require confirmation, are preserved temporarily during replacement, and are restored if link creation fails. Non-empty real directories are never replaced.
 
-## How To Use
+<p align="center">
+  <img src="assets/screenshot-import.png" alt="Import & recreate workspace" width="900">
+</p>
 
-### Scan And Export
+## Portable on Windows and Linux
 
-1. Open the app.
-2. Go to Scan & Export.
-3. Choose the folder you want to scan.
-4. Click Scan symlinks.
-5. Review the results.
-6. Use the search field if you only want to export part of the scan.
-7. Click Export JSON and save the file.
+The app is built with **Tauri, Svelte, and Rust** and processes data locally. Windows may require Developer Mode or administrator elevation to create links. Linux is supported by the implementation, but full native validation of the current refactor is still pending; normal write and executable permissions apply. macOS is not tested.
 
-The JSON export is your symlink backup. Keep it somewhere safe if you plan to rebuild or move a library later.
+## Develop
 
-### Import And Recreate
+Install Node.js/npm, Rust, and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform, then run:
 
-1. Go to Import & Recreate.
-2. Load a JSON export.
-3. Choose the target root where the links should be created.
-4. Add root remap rules if paths changed.
-5. Check the preview.
-6. Click Recreate.
-7. Confirm if the app warns that existing items will be replaced.
-
-The app must run on the operating system where you want to create the links. Use the Windows version to create Windows symlinks, and the Linux version to create Linux symlinks.
-
-## Root Remap Rules
-
-Root remap rules replace the beginning of target paths before links are recreated.
-
-Example:
-
-```text
-W:\Shows -> /mnt/media/shows
-D:\Media -> /mnt/media
+```sh
+npm ci
+npm run tauri dev
 ```
 
-The first matching rule wins. If no rule matches, the original target path is used.
+Useful release checks and builds:
 
-## Search Filter
-
-The scan results can be filtered before export.
-
-- Use multiple terms separated by commas.
-- Prefix a term with `-` to exclude it.
-- If the search field is empty, the full scan is exported.
-
-Example:
-
-```text
-arcane, -1080p
+```sh
+npm run check
+npm run build
+cargo test --manifest-path src-tauri/Cargo.toml --lib
+npm run tauri build
 ```
 
-## Status Meanings
+See [CHANGELOG.md](CHANGELOG.md) for release history, [AUDIT.md](AUDIT.md) for technical verification and follow-up work, and [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) for contributor context.
 
-- OK: the symlink target exists.
-- Broken: the symlink target is missing.
-- Unreadable: the target exists, but the app cannot access it.
-- Skipped: some folders or files could not be read during the scan.
+## License
 
-## Release Files
-
-For a normal release, upload one Windows build and one Linux build.
-
-Recommended names:
-
-- `Symlink-Manager-v1.0.0-Windows-x64.exe`
-- `Symlink-Manager-v1.0.0-Linux-x64`
-
-If you package the Linux build as an archive, use a clear name such as:
-
-- `Symlink-Manager-v1.0.0-Linux-x64.tar.gz`
-
-## Notes
-
-Symlink Manager only manages symbolic links. It does not copy the real target files.
-
-Before recreating links into an important folder, check the preview and replacement warning carefully.
+MIT © 2026 Danavans. See [LICENSE](LICENSE).
