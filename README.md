@@ -1,93 +1,57 @@
-# Symlink Manager
+<p align="center">
+  <img src="assets/icon.svg" width="72" alt="Symlink Manager logo">
+</p>
 
-**Version 1.1.0** · Portable desktop application for Windows and Linux
+<h1 align="center">Symlink Manager</h1>
 
-Scan, inspect, export and recreate symbolic links when moving a library, changing drives or rebuilding a machine. Symlink Manager preserves connections and folder structure; it does not copy the real target files.
+<p align="center">Discover, preserve, and reconnect symbolic links.</p>
 
-## Workspace
+Symlink Manager is a portable desktop app for scanning, exporting, and recreating symbolic links when a library moves, drives change, or a machine is rebuilt. It preserves link locations and targets—it never copies the target files.
 
-- Graphite and indigo interface with sidebar navigation, a consistent connection logo and layouts that adapt to smaller windows.
-- **Scan & export**: clickable health summaries, searchable and sortable inventory, 100-row pages, scan duration and skipped-entry count.
-- **Import & recreate**: guided snapshot loading, destination selection and optional target remapping, with an automatically updated preview.
-- Clear replacement confirmations, operation results and details for partial failures. Dialogs support keyboard focus and Escape; status remains visible in the bottom bar.
-- Local processing and system fonts, with no remote font downloads.
+![Scan & export workspace](assets/screenshot-scan.png)
 
-## Scan and export
+## Scan, inspect, export
 
-1. Open **Scan & export**, choose a folder and click **Scan symlinks**.
-2. Review the health summaries and inventory. Subfolders are scanned; discovered linked folders are not traversed.
-3. Optionally select a health filter and search paths, targets or status.
-4. Click **Export JSON** to save every matching entry across all pages.
+Choose a folder to discover its symbolic links and verify each target. **Healthy** links are accessible, **Broken** targets are missing, and **Unreadable** links or targets could not be verified. A separate skipped count reports traversal errors.
 
-Search is case-insensitive. Separate alternatives with commas (OR), and prefix exclusions with `-`, for example `arcane, -1080p`. To export the entire scan, clear the search and select **Total links**. Pagination does not limit the export.
+Filter by health, search paths, targets, or status, and browse the compact 100-row pages. Search supports comma-separated OR terms and `-term` exclusions. **Export JSON** saves every matching result, across all pages, as a portable snapshot.
 
-| Status | Meaning |
-| --- | --- |
-| OK / Healthy | The target is accessible. |
-| Broken | The target was not found. |
-| Unreadable | The link could not be read, or its target could not be verified. This does not establish that the target exists. |
-| Skipped | A traversal error prevented reading part of the scanned tree. This is a separate counter. |
-
-The scan runs in the background with up to eight workers and reuses target metadata for status and type. The interface renders at most 100 result rows at a time. A local benchmark of 3,000 NTFS junctions measured approximately **2.4× faster scanning**; network and cold-disk performance can differ. Methodology and limitations are in [AUDIT.md](AUDIT.md).
+The 1.1.0 scan runs off the UI thread with bounded concurrency and shared target metadata. A local 3,000-junction fixture measured about **2.4× faster** scanning; see [AUDIT.md](AUDIT.md) for methodology and limitations.
 
 ## Import and recreate
 
-1. Open **Import & recreate** and choose a JSON export.
-2. Set the destination folder where the new links will be created.
-3. Add target-prefix rules if locations changed. Both fields of each rule must be completed, or the unfinished rule removed.
-4. Review the automatic preview. Click a detected root to prefill a mapping rule; the preview shows one example per root.
-5. Click **Recreate links**, confirm any replacements and review the result.
+Load an export, choose the new link destination, then review the automatically updated preview. Optional root mappings reconnect moved targets—for example, `W:\Shows` to `/mnt/media/shows`; the first matching rule wins.
 
-The original relative folder structure is preserved. Root mappings change target paths, not link locations. The first matching rule wins, and matching respects path-component boundaries. Windows matching ignores case and accepts either slash style.
+Imported paths and destinations are validated before work begins. Existing items require confirmation, are preserved temporarily during replacement, and are restored if link creation fails. Non-empty real directories are never replaced.
 
-```text
-W:\Shows -> E:\Media\Shows
-W:\Shows -> /mnt/media/shows
-```
+<p align="center">
+  <img src="assets/screenshot-import.png" alt="Import & recreate workspace" width="900">
+</p>
 
-After explicit rules, targets inside the original scan root are also relocated to the new destination. Other unmatched targets remain unchanged. Recreate links on the operating system where they will be used, with mappings appropriate to that system.
+## Portable on Windows and Linux
 
-### Replacement and validation
+The app is built with **Tauri, Svelte, and Rust** and processes data locally. Windows may require Developer Mode or administrator elevation to create links. Linux is supported by the implementation, but full native validation of the current refactor is still pending; normal write and executable permissions apply. macOS is not tested.
 
-Imported paths are checked for traversal, absolute link paths, duplicates and platform-specific unsafe names. Destinations beneath linked ancestors are refused. Before replacing an existing item, the app temporarily preserves it and restores it if link creation fails. Non-empty real directories are never replaced. Entries whose original target could not be read are reported as failures rather than recreated with a placeholder target.
+## Develop
 
-These safeguards cover normal failures; they are not a crash-recovery journal or a guarantee against concurrent external filesystem changes. Review the preview and replacement warning before modifying an important folder.
-
-## Platforms and portability
-
-- **Windows**: the current refactor has been compiled and tested at the code level. Symlink creation may require Developer Mode or administrator privileges; error 1314 triggers the UAC recreation flow.
-- **Linux**: supported by the implementation; native validation of this refactor is still pending. Write permissions and executable permissions are required. Tauri's platform runtime prerequisites still apply.
-- **macOS**: not tested.
-
-The latest checks include browser UI fixtures and real NTFS junction scans. Full native UAC and Linux validation remain follow-up work. Elevated jobs are polled for up to 60 seconds; after a timeout, the worker may still be running, so check the destination before retrying.
-
-Release executables are intended to run without project setup or an installer. The Windows build uses WebView2. Suggested release filenames:
-
-- `Symlink-Manager-v1.1.0-Windows-x64.exe`
-- `Symlink-Manager-v1.1.0-Linux-x64`
-- `Symlink-Manager-v1.1.0-Linux-x64.tar.gz` if distributing a Linux archive.
-
-These names are packaging guidance, not a claim that all platform releases have been built or published.
-
-## Development and verification
-
-Use Node.js/npm, Rust and the Tauri prerequisites for your platform.
+Install Node.js/npm, Rust, and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform, then run:
 
 ```sh
 npm ci
 npm run tauri dev
+```
+
+Useful release checks and builds:
+
+```sh
 npm run check
 npm run build
 cargo test --manifest-path src-tauri/Cargo.toml --lib
-cargo clippy --manifest-path src-tauri/Cargo.toml --lib -- -D warnings
 npm run tauri build
 ```
 
-The portable Windows output is `src-tauri/target/release/symlinkmanager.exe`; installers are disabled in the Tauri configuration. Version changes take effect in the executable after rebuilding.
+See [CHANGELOG.md](CHANGELOG.md) for release history, [AUDIT.md](AUDIT.md) for technical verification and follow-up work, and [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) for contributor context.
 
-Optional checks:
+## License
 
-- `./tests/benchmark.ps1` in PowerShell 7 on Windows creates and removes a disposable 3,000-junction fixture.
-- `node node_modules/vite/bin/vite.js --mode test --port 1422` starts a UI-only fixture with synthetic data and no filesystem operations. It is excluded from production builds.
-
-See [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) for architecture and compatibility details, [AGENTS.md](AGENTS.md) for contributor instructions, and [AUDIT.md](AUDIT.md) for the detailed audit and remaining priorities.
+MIT © 2026 Danavans. See [LICENSE](LICENSE).

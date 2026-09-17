@@ -3,6 +3,7 @@ name = "symlinkmanager"
 version = "1.1.0"
 description = "Portable desktop app to scan, export, and recreate symlinks."
 authors = ["Danavans"]
+license = "MIT"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

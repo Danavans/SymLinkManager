@@ -6,7 +6,7 @@ Périmètre : refonte et optimisations de **Symlink Manager 1.1.0**. Les mesures
 
 ## Livré
 
-Interface entièrement réorganisée autour d'un espace de travail graphite/menthe : navigation latérale, inventaire, indicateurs de santé cliquables, recherche documentée, pagination de 100 lignes, états vides, durée du scan et journal d'état lisible. L'import suit trois étapes : snapshot, destination, règles de remappage ; l'aperçu reste automatique. Les dialogues natifs HTML gèrent le focus et Échap. Petites fenêtres et réduction des animations sont prises en charge. Tous les textes de l'application restent en anglais.
+Interface entièrement réorganisée autour d'un espace de travail graphite/indigo : navigation latérale, inventaire, indicateurs de santé cliquables, recherche documentée, pagination de 100 lignes, états vides, durée du scan et journal d'état lisible. L'import suit quatre étapes : snapshot, destination, règles de remappage et revue des connexions ; l'aperçu reste automatique. Les dialogues natifs HTML gèrent le focus et Échap. Petites fenêtres et réduction des animations sont prises en charge. Tous les textes de l'application restent en anglais.
 
 Le logo SVG représente deux connexions et une flèche de transfert. Le même dessin alimente le logo de navigation, le favicon, les PNG/ICO/ICNS, l'icône de fenêtre et les variantes de plateformes déjà présentes. Aucune police distante, dépendance d'exécution supplémentaire ou nouvelle étape de build.
 
