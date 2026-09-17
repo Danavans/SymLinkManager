@@ -1,0 +1,127 @@
+name: Release SymLinkManager
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version already set in the repository (for example 1.2.0)
+        required: true
+        type: string
+      windows_portable:
+        description: Windows portable EXE
+        type: boolean
+        default: true
+      linux_portable:
+        description: Linux portable binary
+        type: boolean
+        default: true
+      linux_appimage:
+        description: Linux AppImage
+        type: boolean
+        default: true
+      linux_deb:
+        description: Linux DEB
+        type: boolean
+        default: true
+      macos_dmg:
+        description: macOS DMG
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check version and selected outputs
+        env:
+          VERSION: ${{ inputs.version }}
+          WINDOWS: ${{ inputs.windows_portable }}
+          LINUX: ${{ inputs.linux_portable }}
+          APPIMAGE: ${{ inputs.linux_appimage }}
+          DEB: ${{ inputs.linux_deb }}
+          DMG: ${{ inputs.macos_dmg }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, tomllib
+          from pathlib import Path
+
+          version = os.environ['VERSION']
+          if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version):
+              raise SystemExit('Version must use MAJOR.MINOR.PATCH, for example 1.2.0')
+          if not any(os.environ[name] == 'true' for name in ('WINDOWS', 'LINUX', 'APPIMAGE', 'DEB', 'DMG')):
+              raise SystemExit('Select at least one output')
+
+          package = json.loads(Path('package.json').read_text())
+          lock = json.loads(Path('package-lock.json').read_text())
+          config = json.loads(Path('src-tauri/tauri.conf.json').read_text())
+          cargo = tomllib.loads(Path('src-tauri/Cargo.toml').read_text())
+          cargo_lock = tomllib.loads(Path('src-tauri/Cargo.lock').read_text())
+          app_locks = [entry for entry in cargo_lock['package'] if entry['name'] == cargo['package']['name']]
+          versions = {
+              'package.json': package['version'],
+              'package-lock.json': lock['version'],
+              'package-lock.json root package': lock['packages']['']['version'],
+              'src-tauri/tauri.conf.json': config['version'],
+              'src-tauri/Cargo.toml': cargo['package']['version'],
+              'src-tauri/Cargo.lock application entry': app_locks[0]['version'] if len(app_locks) == 1 else '<missing or duplicate>',
+          }
+          mismatches = [f'{name}: {value}' for name, value in versions.items() if value != version]
+          if mismatches:
+              raise SystemExit('Requested version does not match repository versions:\n' + '\n'.join(mismatches))
+          print(f'Validated v{version} in all application version sources')
+          PY
+      - name: Check tag does not exist
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}"; then
+            echo "Tag v${VERSION} already exists" >&2
+            exit 1
+          else
+            result=$?
+            if [[ $result -ne 2 ]]; then exit "$result"; fi
+          fi
+
+  build:
+    needs: validate
+    uses: ./.github/workflows/build.yml
+    with:
+      windows_portable: ${{ inputs.windows_portable }}
+      linux_portable: ${{ inputs.linux_portable }}
+      linux_appimage: ${{ inputs.linux_appimage }}
+      linux_deb: ${{ inputs.linux_deb }}
+      macos_dmg: ${{ inputs.macos_dmg }}
+
+  draft:
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: SymLinkManager-*
+          path: artifacts
+      - name: Create draft release with selected files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          REPO: ${{ github.repository }}
+          TARGET: ${{ github.sha }}
+        run: |
+          shopt -s nullglob
+          files=(artifacts/*/*)
+          if (( ${#files[@]} == 0 )); then echo 'No build artifacts found' >&2; exit 1; fi
+          gh api --method POST "repos/$REPO/releases" \
+            -f tag_name="v${VERSION}" -f target_commitish="$TARGET" \
+            -f name="v${VERSION}" -f body='Edit this draft before publishing.' \
+            -f make_latest=false -F draft=true --silent
+          gh release upload "v${VERSION}" "${files[@]}" --repo "$REPO"
