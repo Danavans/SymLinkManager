@@ -16,7 +16,7 @@ Choose a folder to discover its symbolic links and verify each target. **Healthy
 
 Filter by health, search paths, targets, or status, and browse the compact 100-row pages. Search supports comma-separated OR terms and `-term` exclusions. **Export JSON** saves every matching result, across all pages, as a portable snapshot.
 
-The 1.1.0 scan runs off the UI thread with bounded concurrency and shared target metadata. A local 3,000-junction fixture measured about **2.4× faster** scanning; see [AUDIT.md](AUDIT.md) for methodology and limitations.
+Scanning runs off the UI thread with bounded concurrency, keeping the app responsive for large libraries.
 
 ## Import and recreate
 
@@ -50,7 +50,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib
 npm run tauri build
 ```
 
-See [CHANGELOG.md](CHANGELOG.md) for release history, [AUDIT.md](AUDIT.md) for technical verification and follow-up work, and [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) for contributor context.
+See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## License
 

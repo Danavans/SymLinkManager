@@ -17,6 +17,6 @@ Symlink Manager 1.1.0 is a portable Tauri + Svelte application for Windows and L
 - Keep the app portable, with no unnecessary dependencies, runtime services or additional build stages.
 - Maintain Windows/Linux behavior parity where possible; document platform-specific flows and distinguish tested behavior from intended support.
 - Run checks appropriate to the changes. Documentation/version-only updates need consistency checks, not a full UI rebuild or filesystem benchmark.
-- Keep `README.md` user-facing, `PROJECT_CONTEXT.md` accurate for future agents and `AUDIT.md` as the detailed findings/measurement record.
+- Keep `README.md` user-facing and `PROJECT_CONTEXT.md` accurate for future agents.
 - When changing the app version, synchronize `package.json`, the root entries in `package-lock.json`, `src-tauri/Cargo.toml`, the application entry in `src-tauri/Cargo.lock` and `src-tauri/tauri.conf.json`. Update release references without changing dependency versions.
 - After code or metadata changes, propose a Conventional Commits message.

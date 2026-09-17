@@ -30,10 +30,10 @@ Root mappings affect targets only; first match wins, path boundaries matter, sla
 ## Safety and execution
 Scan, recreation and conflict checks run off the main thread. Scan uses up to eight standard-library workers and one metadata read per accessible target. Replacement temporarily preserves an existing item and restores it if symlink creation fails; non-empty real directories are never replaced. Imported relative paths are validated and linked destination ancestors rejected. This does not promise immunity to concurrent external filesystem mutation or process crashes.
 
-Windows error 1314 triggers the existing UAC worker via --admin-recreate. The worker reads a temporary job and publishes a result including failure details. Job IDs are validated, jobs use exclusive creation, and result publication uses rename. Polling remains 60 seconds; see AUDIT.md for remaining limitations.
+Windows error 1314 triggers the existing UAC worker via --admin-recreate. The worker reads a temporary job and publishes a result including failure details. Job IDs are validated, jobs use exclusive creation, and result publication uses rename. Polling remains 60 seconds.
 
 ## Verification scope
-The refactor was built for Windows and checked with Rust tests, Clippy, browser UI fixtures and a real 3,000-junction NTFS benchmark. Full native UAC, Linux and network-volume validation remain pending. Do not describe these as already verified. The detailed measurements and remaining limitations are in AUDIT.md; keep them out of the user-facing README except for a concise summary.
+The refactor was built for Windows and checked with Rust tests, Clippy, browser UI fixtures and a real 3,000-junction NTFS benchmark. Full native UAC, Linux and network-volume validation remain pending. Do not describe these as already verified.
 
 ## Main files
 - README.md: user-facing features, workflows, platform scope and build instructions.
@@ -45,7 +45,6 @@ The refactor was built for Windows and checked with Rust tests, Clippy, browser 
 - src-tauri/src/tests.rs and scan_baseline.rs: checks and before/after scan benchmark (test-only).
 - src/lib/ui-fixture.js: explicit Vite test-mode IPC fixture; excluded from production.
 - tests/benchmark.ps1: disposable Windows NTFS junction fixture.
-- AUDIT.md: findings, measurements, verification and follow-up priorities.
 
 ## Commands
 `npm run check`, `npm run build`, `npm run tauri dev`, `npm run tauri build`.
