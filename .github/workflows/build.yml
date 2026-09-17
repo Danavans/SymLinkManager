@@ -1,4 +1,4 @@
-name: Build SymLinkManager
+name: Build
 
 on:
   workflow_dispatch:
